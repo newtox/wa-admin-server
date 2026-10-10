@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { bans, customWokas, listCustomWokas, listReports, listUsers, reports, rooms, users, type Access, type CustomWoka, type RoomSettings } from "./db.js";
-import { changeRoomStyle, createPersonalRoom, mayCreatePersonalRoom, personalRoomsEnabled, roomMapExists, roomStyles, type RoomStyle } from "./access.js";
+import { changeRoomStyle, createPersonalRoom, isAdmin, mayCreatePersonalRoom, personalRoomsEnabled, roomMapExists, roomStyles, type RoomStyle } from "./access.js";
 import { deleteMap, listRooms } from "./mapStorage.js";
 import { HttpError, sendJson } from "./http.js";
 import { identityFromClaims, oidcEndpoints } from "./identity.js";
@@ -429,7 +429,7 @@ function knownTags(): string[] {
 const realUsers = () => listUsers().filter((u) => !u.identifier.match(/^[0-9a-f-]{36}$/));
 
 // In the players' profile page other members' emails must not end up in the HTML, so ids are replaced by opaque tokens there.
-function accessFields(access: Access, options: { everyoneLabel?: string; exclude?: string; opaque?: boolean; lang?: Lang } = {}): string {
+function accessFields(access: Access, options: { everyoneLabel?: string; exclude?: string; opaque?: boolean; lang?: Lang; roles?: boolean } = {}): string {
     const lang = options.lang ?? "de";
     const text = t(lang);
     const idValue = (identifier: string) => (options.opaque ? cardToken(identifier) : identifier);
@@ -443,7 +443,7 @@ function accessFields(access: Access, options: { everyoneLabel?: string; exclude
         .join("");
     const extra = (access.users ?? []).filter((u) => !known.some((k) => k.identifier.toLowerCase() === u.toLowerCase()) && u.toLowerCase() !== options.exclude?.toLowerCase());
     return `<div class="checks"><label><input type="checkbox" name="everyone" value="1"${access.everyone ? " checked" : ""}> ${esc(options.everyoneLabel ?? text.everyone)}</label></div>
-<label>${text.roles}</label><div class="checks">${tagChecks}</div>
+${options.roles === false ? "" : `<label>${text.roles}</label><div class="checks">${tagChecks}</div>`}
 <label>${text.people}</label><div class="checks">${userChecks || `<span class="sub">${text.nobodyYet}</span>`}</div>
 <label for="more">${text.morePeople}</label><textarea id="more" name="more" rows="2">${esc(extra.join("\n"))}</textarea>`;
 }
@@ -870,7 +870,7 @@ ${preview ? `<img class="room-preview" src="${esc(preview)}" alt="">` : ""}
 <form method="post" action="/profile/room/settings">${token}
 <label for="name">${text.name}</label><input id="name" name="name" type="text" maxlength="60" value="${esc(room.name ?? "")}">
 <label>${text.whoMayEnter}</label>
-${accessFields(room.access, { exclude: viewer.identifier, opaque: true, lang })}
+${accessFields(room.access, { exclude: viewer.identifier, opaque: true, lang, roles: isAdmin(viewer) })}
 <button class="btn" type="submit">${text.save}</button></form>
 ${
     styles.length > 1
@@ -1084,6 +1084,8 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
                 }
             }
             const access = accessFromForm(form, true);
+            // Only admins open a personal room to whole roles; everyone else invites single people.
+            if (!isAdmin(viewer)) access.tags = room.access.tags ?? [];
             access.users = (access.users ?? []).filter((u) => u.toLowerCase() !== identity.email!.toLowerCase());
             rooms.save({ ...room, name: (form.get("name") ?? "").trim().slice(0, 60) || room.name, access });
             return sendProfile(accessToken, (text) => text.saved);
