@@ -1,0 +1,24 @@
+[
+    {
+        "name": "skribbl.io",
+        "description": {
+            "de": "Montagsmaler: Einer zeichnet, alle raten. Raum erstellen und den Link im Chat teilen.",
+            "en": "Draw and guess: one draws, everyone guesses. Create a room and share its link in the chat."
+        },
+        "image": "/files/apps/skribbl.png",
+        "regexUrl": "^https://skribbl\\.io/(.*)$",
+        "targetUrl": "https://skribbl.io/$1",
+        "forceNewTab": true
+    },
+    {
+        "name": "Gartic Phone",
+        "description": {
+            "de": "Stille Post mit Zeichnen. Raum erstellen und den Einladungslink im Chat teilen.",
+            "en": "Telephone game with drawings. Create a room and share the invite link in the chat."
+        },
+        "image": "/files/apps/gartic.png",
+        "regexUrl": "^https://garticphone\\.com/(.*)$",
+        "targetUrl": "https://garticphone.com/$1",
+        "forceNewTab": true
+    }
+]

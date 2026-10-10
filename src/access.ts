@@ -4,6 +4,7 @@ import { rooms, type Access, type RoomSettings } from "./db.js";
 import { deleteMap, listRooms, mapExists, readMap, writeMap, type RoomDescription } from "./mapStorage.js";
 import type { Viewer } from "./wokas.js";
 import { t, type Lang } from "./i18n.js";
+import { withPreviews } from "./roomPreview.js";
 
 export const isAdmin = (viewer: Viewer) => viewer.tags.includes(config.adminTag);
 
@@ -32,7 +33,7 @@ export function isOwner(settings: RoomSettings | undefined, viewer: Viewer): boo
 
 /** Room list with names/descriptions from the admin settings, filtered for the given roles. */
 export async function roomsVisibleFor(tags: string[] | undefined): Promise<RoomDescription[]> {
-    const list = await listRooms();
+    const list = await withPreviews(await listRooms(), 0); // the game should not wait for a picture
     const settings = new Map(rooms.all().map((r) => [r.path, r]));
     const templates = new Set((await roomStyles(list)).map((s) => s.path));
     const viewer = { identifier: "", tags: tags ?? [] };

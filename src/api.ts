@@ -7,6 +7,8 @@ import { HttpError, queryList, queryString, readJson, sendEmpty, sendJson } from
 import { identityFromAccessToken, oidcEndpoints } from "./identity.js";
 import { visitCardUrl } from "./cards.js";
 import { listRooms } from "./mapStorage.js";
+import { roomPreview } from "./roomPreview.js";
+import { applicationsFor } from "./applications.js";
 import { langFrom, matchLang, t } from "./i18n.js";
 import { companionDetail, companions, wokaDetailsFor, wokaListFor, type Viewer } from "./wokas.js";
 
@@ -123,6 +125,8 @@ function parseUrl(value: string | undefined, name: string): URL {
 async function metatags(path: string | undefined) {
     const settings = path ? rooms.get(path) : undefined;
     const room = path ? (await listRooms().catch(() => [])).find((r) => r.roomUrl === "/~/" + path) : undefined;
+    // Personal rooms show their own drawn picture in link previews.
+    const preview = settings?.owner && config.publicUrl ? await roomPreview(path!, 2000).catch(() => undefined) : undefined;
     const name = settings?.name || room?.name;
     const description = settings?.description || config.siteDescription || room?.description || undefined;
     return {
@@ -131,7 +135,7 @@ async function metatags(path: string | undefined) {
         appName: config.siteName,
         provider: config.siteName,
         author: config.siteName,
-        ...(config.siteImage ? { cardImage: config.siteImage } : {}),
+        ...(preview ? { cardImage: preview } : config.siteImage ? { cardImage: config.siteImage } : {}),
     };
 }
 
@@ -266,7 +270,7 @@ async function roomAccess(query: URLSearchParams, acceptLanguage: string | undef
         activatedInviteUser: true,
         canEdit: canEditMap(viewer, playUri),
         world: playUri.origin,
-        applications: [],
+        applications: applicationsFor(langFrom(acceptLanguage)),
         canRecord: false,
         analyticsEventsEnabled: false,
     };

@@ -12,6 +12,8 @@ import { HttpError, sendJson } from "./http.js";
 import { identityFromClaims, oidcEndpoints } from "./identity.js";
 import { PARTS_DIR, WOKA_PARTS, wokaListFor } from "./wokas.js";
 import { cardToken, identifierFromCardToken, roleStyle, WA_BLUE, WA_CONTRAST } from "./cards.js";
+import { APPS_DIR } from "./applications.js";
+import { previewFile, roomPreview, withPreviews } from "./roomPreview.js";
 import { identityFromAccessToken } from "./identity.js";
 import { personalTag } from "./api.js";
 import { langFrom, matchLang, styleLabel, t, type Lang } from "./i18n.js";
@@ -548,7 +550,7 @@ async function roomsPage(c: Ctx, message?: string): Promise<string> {
     let list: Awaited<ReturnType<typeof listRooms>> = [];
     let error = "";
     try {
-        list = await listRooms();
+        list = await withPreviews(await listRooms());
     } catch {
         error = a.storageDown;
     }
@@ -813,6 +815,7 @@ label{display:block;margin:10px 0 4px;color:rgba(255,255,255,.7)}input[type=text
 .style{display:block;margin:0;cursor:pointer}.style input{position:absolute;opacity:0}
 .style span{display:block;border:2px solid transparent;border-radius:8px;overflow:hidden;background:rgba(0,0,0,.25)}
 .style img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;image-rendering:pixelated;background:rgba(255,255,255,.06)}
+.room-preview{display:block;width:100%;max-width:448px;margin:0 0 12px;border-radius:8px;image-rendering:pixelated;background:#1b1a2a}
 .style b{display:block;padding:4px 8px;font-weight:500;color:#fff}.style small{color:rgba(255,255,255,.55);margin:0;display:inline}
 .style input:checked+span{border-color:${WA_BLUE}}.style input:focus-visible+span{outline:2px solid #fff}
 details{margin-top:14px}summary{cursor:pointer;color:rgba(255,255,255,.8)}
@@ -859,7 +862,9 @@ async function personalRoomSection(viewer: { identifier: string; tags: string[] 
 <button class="btn" type="submit">${text.restoreRoom}</button></form></div>`;
     }
     const enter = config.playUrl ? `${config.playUrl}/~/${room.path.split("/").map(encodeURIComponent).join("/")}` : `/~/${room.path}`;
+    const preview = await roomPreview(room.path).catch(() => undefined);
     return `<h2>${text.yourRoom}</h2><div class="box">
+${preview ? `<img class="room-preview" src="${esc(preview)}" alt="">` : ""}
 <a class="btn" href="${esc(enter)}" target="_top">${text.enterRoom}</a>
 <p class="hint" style="margin-top:10px">${text.roomEditHint}</p>
 <form method="post" action="/profile/room/settings">${token}
@@ -975,6 +980,24 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
         const filePath = path.join(PARTS_DIR, partFile[1]!);
         if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: "not found" });
         res.writeHead(200, { "Content-Type": "image/png", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=604800", "X-Content-Type-Options": "nosniff" });
+        return void fs.createReadStream(filePath).pipe(res);
+    }
+
+    // App icons for WorkAdventure's app list.
+    const appIcon = /^\/files\/apps\/([a-z0-9-]+\.png)$/.exec(p);
+    if (appIcon && req.method === "GET") {
+        const filePath = path.join(APPS_DIR, appIcon[1]!);
+        if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: "not found" });
+        res.writeHead(200, { "Content-Type": "image/png", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff" });
+        return void fs.createReadStream(filePath).pipe(res);
+    }
+
+    // Drawn previews of personal rooms; the name changes with every new picture.
+    const roomFile = /^\/files\/rooms\/([0-9a-f-]+\.png)$/.exec(p);
+    if (roomFile && req.method === "GET") {
+        const filePath = previewFile(roomFile[1]!);
+        if (!filePath) return sendJson(res, 404, { error: "not found" });
+        res.writeHead(200, { "Content-Type": "image/png", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" });
         return void fs.createReadStream(filePath).pipe(res);
     }
 

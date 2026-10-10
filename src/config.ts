@@ -89,6 +89,8 @@ export const config = {
     // ---------- Admin UI (optional) ----------
     /** Public URL of the admin UI, e.g. https://workadventure-admin.example.com. Enables the UI. */
     publicUrl: optional("PUBLIC_URL") ? trimSlash(optional("PUBLIC_URL")!) : undefined,
+    /** Apps offered in WorkAdventure's chat and map editor (default: data/applications.json). */
+    applicationsFile: optional("APPLICATIONS_FILE"),
     uiPort: Number(str("UI_PORT", "3001")),
     /** Time zone for dates in the admin UI (TZ of the container, otherwise Europe/Berlin). */
     timeZone: str("TIME_ZONE", process.env.TZ || "Europe/Berlin"),
