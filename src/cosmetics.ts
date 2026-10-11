@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { db } from "./db.js";
 import type { Lang } from "./i18n.js";
+import { roleStyle } from "./cards.js";
 
 export type CosmeticPart = "clothes" | "hat" | "accessory" | "eyes" | "companion";
 
@@ -148,6 +149,28 @@ export function cosmeticOwners(itemId: string): { identifier: string; source: st
     }));
 }
 
+export type HolderReason = "everyone" | "role" | "season" | "manual";
+
+/**
+ * Who has an item right now and why: everyone it applies to automatically (everyone, roles incl. admins,
+ * running season) plus those it was given to or who kept it from an earlier season.
+ */
+export function cosmeticHolders(item: Cosmetic, members: CosmeticViewer[]): { identifier: string; reason: HolderReason; stored: boolean; since?: string }[] {
+    const stored = new Map(cosmeticOwners(item.id).map((o) => [o.identifier.toLowerCase(), o]));
+    const out: { identifier: string; reason: HolderReason; stored: boolean; since?: string }[] = [];
+    for (const m of members) {
+        const own = stored.get(m.identifier.toLowerCase());
+        const u = item.unlock;
+        let reason: HolderReason | undefined;
+        if (u.everyone) reason = "everyone";
+        else if (isAdminViewer(m) || u.tags?.some((t) => m.tags.includes(t))) reason = "role";
+        else if (own) reason = own.source === "season" ? "season" : "manual";
+        else if (u.season && inSeason(u.season)) reason = "season";
+        if (reason) out.push({ identifier: m.identifier, reason, stored: !!own, since: own?.createdAt });
+    }
+    return out;
+}
+
 /** Players who entered a room on a day ("YYYY-MM-DD"). */
 export function visitorsOn(day: string): string[] {
     return (st.visitorsOn.all(day) as { identifier: string }[]).map((r) => r.identifier);
@@ -162,7 +185,7 @@ export function unlockShort(item: Cosmetic, lang: Lang): string {
         const fmt = (md: string) => (de ? `${md.slice(3)}.${md.slice(0, 2)}.` : `${md.slice(0, 2)}/${md.slice(3)}`);
         return `${fmt(u.season.from)}–${fmt(u.season.to)}`;
     }
-    if (u.tags) return u.tags.join(", ");
+    if (u.tags) return u.tags.map((t) => roleStyle(t, lang).label).join(", ");
     return "Event";
 }
 
@@ -171,7 +194,8 @@ export function unlockHint(item: Cosmetic, lang: Lang): string {
     const u = item.unlock;
     const de = lang === "de";
     if (u.everyone) return de ? "Für alle" : "For everyone";
-    if (u.tags) return de ? `Nur für ${u.tags.join(", ")}` : `Only for ${u.tags.join(", ")}`;
+    const roles = (u.tags ?? []).map((t) => roleStyle(t, lang).label).join(", ");
+    if (u.tags) return de ? `Nur für ${roles}` : `Only for ${roles}`;
     if (u.season) {
         const fmt = (md: string) => (de ? `${md.slice(3)}.${md.slice(0, 2)}.` : `${md.slice(0, 2)}/${md.slice(3)}`);
         return de

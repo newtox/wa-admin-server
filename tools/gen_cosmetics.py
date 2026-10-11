@@ -47,16 +47,28 @@ def assemble(parts):
     return out
 
 
+def waist_line(frame, split=0.47):
+    """First row below the chest where the trousers (mostly dark pixels) start."""
+    for y in range(20, 32):
+        row = [frame.getpixel((x, y)) for x in range(32)]
+        row = [p for p in row if p[3]]
+        if len(row) >= 4 and sum(1 for p in row if lum(p) < split) * 2 > len(row):
+            return y
+    return 32
+
+
 def garment(template, top, bottom, pattern=None, split=0.47, extra=None):
     """Recolours a WorkAdventure clothes sprite.
 
-    template: RGBA sheet. Light pixels (the shirt) get the `top` colour ramp, dark ones (trousers) the `bottom` ramp.
+    template: RGBA sheet. Light pixels above the waist (the shirt) get the `top` colour ramp, everything below the
+    waist (trousers, including the template's lighter belt and pocket lines) the `bottom` ramp.
     pattern(x, y, dir, frame) -> colour or None, applied to shirt pixels. extra(frame_img, dir, col, bob) draws on top.
     """
     parts = {}
     for r, c, f in frames(template):
         d = DIRS[r]
         g = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+        waist = waist_line(f, split)
         for y in range(32):
             for x in range(32):
                 p = f.getpixel((x, y))
@@ -65,6 +77,8 @@ def garment(template, top, bottom, pattern=None, split=0.47, extra=None):
                 L = lum(p)
                 if L < 0.2:
                     col = K
+                elif y >= waist:
+                    col = ramp(bottom, min(1.0, (L - 0.2) / 0.6))
                 elif L >= split:
                     col = ramp(top, (L - split) / (1 - split))
                     if pattern:
@@ -199,8 +213,15 @@ def build_clothes(src):
     out["arcade-shirt"] = garment(shirt, [rgb("#121218"), rgb("#1e1e28"), rgb("#2c2c3a")], jeans, pattern=neon)
 
     # Roles
-    out["royal-robe"] = garment(shirt, [rgb("#b0a890"), rgb("#e8e2d0"), rgb("#fffaf0")], black,
-                                extra=cape(rgb("#8a0f22"), rgb("#c41e3a"), fur=True))
+    def royal(x, y, d, c):
+        bob = 0 if c == 1 else 1
+        if y <= 20 + bob and (d != "down" or abs(x - 16.5) >= 3):   # ermine on the shoulders: white fur, black tips
+            return (20, 20, 22) if (x + 2 * y) % 5 == 0 else (246, 244, 238)
+        if d == "down" and x in (16, 17) and y >= 19 + bob:  # gold trim down the front, with buttons
+            return (255, 236, 140) if y % 2 else (226, 176, 48)
+        return None
+    out["royal-robe"] = garment(shirt, [rgb("#5a0814"), rgb("#9a1428"), rgb("#c8283c")], black, pattern=royal,
+                                extra=cape(rgb("#7a0c20"), rgb("#e2b030")))
     return out
 
 

@@ -20,7 +20,7 @@ import { langFrom, matchLang, styleLabel, t, type Lang } from "./i18n.js";
 import { adminText, type AdminTexts } from "./adminI18n.js";
 import { createInvite, deleteInvite, invitesEnabled, listInvites, type Invite } from "./invites.js";
 import {
-    COSMETICS_DIR, cosmeticById, cosmeticOwners, cosmeticSets, cosmetics, cosmeticsFor, cosmeticUrl, grantCosmetic,
+    COSMETICS_DIR, cosmeticById, cosmeticHolders, cosmeticSets, cosmetics, cosmeticsFor, cosmeticUrl, grantCosmetic,
     revokeCosmetic, unlockHint, unlockShort, visitorsOn, type Cosmetic,
 } from "./cosmetics.js";
 
@@ -727,6 +727,9 @@ function ruleChip(item: Cosmetic, c: Ctx, long = false): string {
     return long ? `<p class="hint" style="margin:0">${esc(unlockHint(item, c.lang))}</p>` : `<span class="chip" title="${esc(unlockHint(item, c.lang))}">${esc(unlockShort(item, c.lang))}</span>`;
 }
 
+/** All members with their roles, to work out who has which cosmetic. */
+const members = () => realUsers().map((u) => ({ identifier: u.identifier, tags: u.tags }));
+
 function cosmeticsPage(c: Ctx, message?: string): string {
     const s = c.s!;
     const a = c.a;
@@ -738,7 +741,7 @@ function cosmeticsPage(c: Ctx, message?: string): string {
             return `<h2 class="section-title" style="margin-top:8px">${esc(set.names[c.lang])}</h2><div class="grid" style="margin-bottom:22px">${items
                 .map(
                     (item) => `<a class="card woka" href="/cosmetics/${encodeURIComponent(item.id)}"><span class="stage">${cosmeticStack(item)}</span>
-<div><h3>${esc(item.names[c.lang])}</h3><div class="part">${esc(a.parts[item.part] ?? a.companion)} · ${esc(a.ownersCount(cosmeticOwners(item.id).length))}</div></div><div class="chips">${ruleChip(item, c)}</div></a>`,
+<div><h3>${esc(item.names[c.lang])}</h3><div class="part">${esc(a.parts[item.part] ?? a.companion)} · ${esc(a.ownersCount(cosmeticHolders(item, members()).length))}</div></div><div class="chips">${ruleChip(item, c)}</div></a>`,
                 )
                 .join("")}</div>`;
         })
@@ -751,11 +754,15 @@ ${sets}`);
 function cosmeticPage(c: Ctx, item: Cosmetic, message?: string): string {
     const s = c.s!;
     const a = c.a;
-    const owners = cosmeticOwners(item.id);
+    const owners = cosmeticHolders(item, members());
     const ownerRows = owners
         .map(
-            (o) => `<div class="row"><div class="who"><div><strong>${esc(nameOf(o.identifier))}</strong><span class="sub">${esc(a.sources[o.source] ?? o.source)} · ${esc(fmtDate(o.createdAt, a))}</span></div></div>
-<div class="actions"><form method="post" action="/cosmetics/${encodeURIComponent(item.id)}/revoke">${csrfInput(s)}<input type="hidden" name="id" value="${esc(o.identifier)}"><button class="ghost sm">${icon("x")}${a.revoke}</button></form></div></div>`,
+            (o) => `<div class="row"><div class="who"><div><strong>${esc(nameOf(o.identifier))}</strong><span class="sub">${esc(a.sources[o.reason] ?? o.reason)}${o.since && o.reason !== "everyone" && o.reason !== "role" ? ` · ${esc(fmtDate(o.since, a))}` : ""}</span></div></div>
+<div class="actions">${
+                o.stored && o.reason !== "everyone" && o.reason !== "role"
+                    ? `<form method="post" action="/cosmetics/${encodeURIComponent(item.id)}/revoke">${csrfInput(s)}<input type="hidden" name="id" value="${esc(o.identifier)}"><button class="ghost sm">${icon("x")}${a.revoke}</button></form>`
+                    : ""
+            }</div></div>`,
         )
         .join("");
     const memberOptions = realUsers()
