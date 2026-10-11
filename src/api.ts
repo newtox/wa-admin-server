@@ -150,7 +150,7 @@ async function logoutRedirectUrl(): Promise<string | null> {
     return `${config.playUrl ?? ""}/logout?redirect=${encodeURIComponent(endSession)}`;
 }
 
-async function mapDetails(playUri: URL) {
+async function mapDetails(playUri: URL, isLogged: boolean) {
     if (playUri.pathname === "/") {
         return { redirectUrl: new URL(config.startRoomUrl, playUri).toString() };
     }
@@ -179,6 +179,9 @@ async function mapDetails(playUri: URL) {
         wamUrl,
         editable: wamUrl !== undefined && config.enableMapEditor,
         authenticationMandatory: config.disableAnonymous,
+        // Without it WorkAdventure decides from its own copy of the login token, which it only reads after a fresh
+        // login. After a page reload it then takes logged-in players for guests and never saves their woka.
+        isLogged,
         group: wamUrl ? "default" : null,
         contactPage: null,
         opidLogoutRedirectUrl: await logoutRedirectUrl(),
@@ -301,7 +304,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
 
     switch (route) {
         case "GET /api/map":
-            return sendJson(res, 200, await mapDetails(parseUrl(queryString(q, "playUri"), "playUri")));
+            return sendJson(res, 200, await mapDetails(parseUrl(queryString(q, "playUri"), "playUri"), !!queryString(q, "accessToken") && !!queryString(q, "userId")));
 
         case "GET /api/room/access":
             return sendJson(res, 200, await roomAccess(q, req.headers["accept-language"]));
@@ -324,6 +327,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
             const known = users.get(identifier);
             if (!wokaDetailsFor({ identifier, tags: known?.tags ?? [] }, textures)) throw new HttpError(400, "Unknown or forbidden texture");
             users.setTextures(identifier, textures);
+            console.info(`woka of ${identifier} saved`);
             return sendEmpty(res, 204);
         }
 
