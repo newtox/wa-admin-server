@@ -10,7 +10,8 @@ import { listRooms } from "./mapStorage.js";
 import { roomPreview } from "./roomPreview.js";
 import { applicationsFor } from "./applications.js";
 import { langFrom, matchLang, t } from "./i18n.js";
-import { companionDetail, companions, wokaDetailsFor, wokaListFor, type Viewer } from "./wokas.js";
+import { companionDetail, companionsFor, wokaDetailsFor, wokaListFor, type Viewer } from "./wokas.js";
+import { recordVisit } from "./cosmetics.js";
 
 const CAPABILITIES = {
     "api/woka/list": "v1",
@@ -234,6 +235,8 @@ async function roomAccess(query: URLSearchParams, acceptLanguage: string | undef
         );
     }
     const stored = !anonymous && identifier ? users.get(identifier) : undefined;
+    // Notes the day: hands out the items of the running season, and lets admins reward everyone online that day.
+    if (stored) recordVisit(stored.identifier);
     // Remembered so the profile tab can use the game language instead of the browser's.
     const gameLang = matchLang(acceptLanguage);
     if (stored && gameLang) {
@@ -251,10 +254,10 @@ async function roomAccess(query: URLSearchParams, acceptLanguage: string | undef
     let isCompanionTextureValid = true;
     const companionId = stored?.companion ?? requestedCompanion;
     if (companionId) {
-        companionTexture = companionDetail(companionId) ?? null;
+        companionTexture = companionDetail(companionId, viewer) ?? null;
         if (!companionTexture) {
             // Unknown companion: fall back to the browser's choice, otherwise ask again.
-            companionTexture = requestedCompanion ? (companionDetail(requestedCompanion) ?? null) : null;
+            companionTexture = requestedCompanion ? (companionDetail(requestedCompanion, viewer) ?? null) : null;
             isCompanionTextureValid = companionTexture !== null || !requestedCompanion;
         }
     }
@@ -316,8 +319,12 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
             return sendJson(res, 200, wokaListFor({ identifier: identifier ?? "", tags: known?.tags ?? [] }, known?.locale === "de" ? "de" : "en"));
         }
 
-        case "GET /api/companion/list":
-            return sendJson(res, 200, companions);
+        case "GET /api/companion/list": {
+            const uuid = queryString(q, "uuid");
+            const identifier = uuid ? identifierOf(uuid) : undefined;
+            const known = identifier ? users.get(identifier) : undefined;
+            return sendJson(res, 200, companionsFor({ identifier: identifier ?? "", tags: known?.tags ?? [] }, known?.locale === "de" ? "de" : "en"));
+        }
 
         case "POST /api/save-textures": {
             const body = await readJson(req);
@@ -336,7 +343,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
             const identifier = typeof body.userIdentifier === "string" ? identifierOf(body.userIdentifier) : undefined;
             const texture = typeof body.texture === "string" ? body.texture : null;
             if (!identifier) throw new HttpError(400, "Missing userIdentifier");
-            if (texture !== null && !companionDetail(texture)) throw new HttpError(400, "Unknown companion");
+            const owner = users.get(identifier);
+            if (texture !== null && !companionDetail(texture, { identifier, tags: owner?.tags ?? [] })) throw new HttpError(400, "Unknown companion");
             users.setCompanion(identifier, texture);
             return sendEmpty(res, 204);
         }

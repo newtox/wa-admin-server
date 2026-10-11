@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listCustomWokas, type CustomWoka } from "./db.js";
 import { config } from "./config.js";
+import { cosmeticSets, cosmeticTextureId, cosmeticUrl, cosmeticsFor, hasCosmetic, cosmetics, type CosmeticViewer } from "./cosmetics.js";
 
 // Same order WorkAdventure uses to stack the layers of a woka.
 export const WOKA_PARTS = ["woka", "body", "eyes", "hair", "clothes", "hat", "accessory"] as const;
@@ -90,6 +91,23 @@ function addPipoya(list: WokaList, lang: "de" | "en"): void {
     }
 }
 
+// Unlockable cosmetics (seasonal, roles, trophies): one collection per set, only with what the player has.
+function addCosmetics(list: WokaList, viewer: CosmeticViewer, lang: "de" | "en"): void {
+    if (!config.publicUrl) return;
+    const own = cosmeticsFor(viewer);
+    cosmeticSets.forEach((set, index) => {
+        for (const item of own.filter((c) => c.set === set.key && c.part !== "companion")) {
+            const part = (list[item.part] ??= { collections: [] });
+            let collection = part.collections.find((c) => c.name === set.names[lang]);
+            if (!collection) {
+                collection = { name: set.names[lang], position: 100 + index, textures: [] };
+                part.collections.push(collection);
+            }
+            collection.textures.push({ id: cosmeticTextureId(item), name: item.names[lang], url: cosmeticUrl(item), position: collection.textures.length });
+        }
+    });
+}
+
 export function canUse(woka: CustomWoka, viewer: Viewer): boolean {
     const access = woka.access;
     if (access.everyone) return true;
@@ -102,6 +120,7 @@ export function wokaListFor(viewer: Viewer, lang: "de" | "en" = "en"): WokaList 
     const list: WokaList = structuredClone(official);
     addPipoya(list, lang);
     addParts(list, lang);
+    addCosmetics(list, viewer, lang);
     const custom = listCustomWokas().filter((w) => canUse(w, viewer));
     for (const woka of custom) {
         const part = (list[woka.part] ??= { collections: [] });
@@ -153,10 +172,31 @@ interface CompanionCollection {
 
 export const companions: CompanionCollection[] = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "companions.json"), "utf8"));
 
-export function companionDetail(id: string): { id: string; url: string } | undefined {
+/** Companions a player may choose: the official ones plus the unlocked cosmetic companions. */
+export function companionsFor(viewer: CosmeticViewer, lang: "de" | "en" = "en"): CompanionCollection[] {
+    const list = structuredClone(companions);
+    if (!config.publicUrl) return list;
+    const own = cosmeticsFor(viewer).filter((c) => c.part === "companion");
+    cosmeticSets.forEach((set, index) => {
+        const items = own.filter((c) => c.set === set.key);
+        if (items.length) {
+            list.push({
+                name: set.names[lang],
+                position: 100 + index,
+                textures: items.map((item) => ({ id: cosmeticTextureId(item), name: item.names[lang], url: cosmeticUrl(item), ...(item.behavior ? { behavior: item.behavior } : {}) })),
+            });
+        }
+    });
+    return list;
+}
+
+/** A companion texture, or undefined if it does not exist or the player may not use it. */
+export function companionDetail(id: string, viewer: CosmeticViewer): { id: string; url: string } | undefined {
     for (const collection of companions) {
         const texture = collection.textures.find((t) => t.id === id);
         if (texture) return { id: texture.id, url: texture.url };
     }
+    const item = cosmetics.find((c) => c.part === "companion" && cosmeticTextureId(c) === id);
+    if (item && config.publicUrl && hasCosmetic(viewer, item)) return { id, url: cosmeticUrl(item) };
     return undefined;
 }

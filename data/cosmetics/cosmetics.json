@@ -1,0 +1,36 @@
+{
+  "sets": [
+    {"key": "halloween", "names": {"de": "Halloween", "en": "Halloween"}},
+    {"key": "winter", "names": {"de": "Winter", "en": "Winter"}},
+    {"key": "summer", "names": {"de": "Sommer", "en": "Summer"}},
+    {"key": "gamer", "names": {"de": "Gamer", "en": "Gamer"}},
+    {"key": "roles", "names": {"de": "Rollen", "en": "Roles"}},
+    {"key": "extras", "names": {"de": "Extras", "en": "Extras"}}
+  ],
+  "items": [
+    {"id": "vampire-cape", "part": "clothes", "set": "halloween", "names": {"de": "Vampirumhang", "en": "Vampire cape"}, "unlock": {"season": {"from": "10-01", "to": "11-07"}}},
+    {"id": "skeleton-shirt", "part": "clothes", "set": "halloween", "names": {"de": "Skelett-Shirt", "en": "Skeleton shirt"}, "unlock": {"season": {"from": "10-01", "to": "11-07"}}},
+    {"id": "pumpkin-head", "part": "hat", "set": "halloween", "names": {"de": "Kürbiskopf", "en": "Pumpkin head"}, "unlock": {"season": {"from": "10-01", "to": "11-07"}}},
+    {"id": "witch-hat", "part": "hat", "set": "halloween", "names": {"de": "Hexenhut", "en": "Witch hat"}, "unlock": {"season": {"from": "10-01", "to": "11-07"}}},
+    {"id": "pumpkin-lantern", "part": "accessory", "set": "halloween", "names": {"de": "Kürbislaterne", "en": "Pumpkin lantern"}, "unlock": {"season": {"from": "10-01", "to": "11-07"}}},
+    {"id": "bat", "part": "companion", "set": "halloween", "behavior": "cat", "names": {"de": "Fledermaus", "en": "Bat"}, "unlock": {"season": {"from": "10-01", "to": "11-07"}}},
+    {"id": "ghost", "part": "companion", "set": "halloween", "behavior": "cat", "names": {"de": "Geist", "en": "Ghost"}, "unlock": {"season": {"from": "10-01", "to": "11-07"}}},
+    {"id": "xmas-sweater", "part": "clothes", "set": "winter", "names": {"de": "Weihnachtspulli", "en": "Christmas sweater"}, "unlock": {"season": {"from": "12-01", "to": "01-06"}}},
+    {"id": "santa-hat", "part": "hat", "set": "winter", "names": {"de": "Weihnachtsmütze", "en": "Santa hat"}, "unlock": {"season": {"from": "12-01", "to": "01-06"}}},
+    {"id": "antlers", "part": "hat", "set": "winter", "names": {"de": "Rentiergeweih", "en": "Antlers"}, "unlock": {"season": {"from": "12-01", "to": "01-06"}}},
+    {"id": "candy-cane", "part": "accessory", "set": "winter", "names": {"de": "Zuckerstange", "en": "Candy cane"}, "unlock": {"season": {"from": "12-01", "to": "01-06"}}},
+    {"id": "hawaii-shirt", "part": "clothes", "set": "summer", "names": {"de": "Hawaiihemd", "en": "Hawaiian shirt"}, "unlock": {"season": {"from": "06-01", "to": "08-31"}}},
+    {"id": "straw-hat", "part": "hat", "set": "summer", "names": {"de": "Strohhut", "en": "Straw hat"}, "unlock": {"season": {"from": "06-01", "to": "08-31"}}},
+    {"id": "ice-cream", "part": "accessory", "set": "summer", "names": {"de": "Eis am Stiel", "en": "Ice lolly"}, "unlock": {"season": {"from": "06-01", "to": "08-31"}}},
+    {"id": "gamer-hoodie", "part": "clothes", "set": "gamer", "names": {"de": "Gamer-Hoodie", "en": "Gamer hoodie"}, "unlock": {"everyone": true}},
+    {"id": "arcade-shirt", "part": "clothes", "set": "gamer", "names": {"de": "Arcade-Shirt", "en": "Arcade shirt"}, "unlock": {"everyone": true}},
+    {"id": "crown", "part": "hat", "set": "roles", "names": {"de": "Krone", "en": "Crown"}, "unlock": {"tags": ["admin"]}},
+    {"id": "royal-robe", "part": "clothes", "set": "roles", "names": {"de": "Königsmantel", "en": "Royal robe"}, "unlock": {"tags": ["admin"]}},
+    {"id": "sunglasses", "part": "eyes", "set": "roles", "names": {"de": "Sonnenbrille", "en": "Sunglasses"}, "unlock": {"tags": ["vip"]}},
+    {"id": "trophy", "part": "accessory", "set": "extras", "names": {"de": "Pokal", "en": "Trophy"}, "unlock": {"everyone": true}},
+    {"id": "medal", "part": "accessory", "set": "extras", "names": {"de": "Medaille", "en": "Medal"}, "unlock": {"everyone": true}},
+    {"id": "party-hat", "part": "hat", "set": "extras", "names": {"de": "Partyhut", "en": "Party hat"}, "unlock": {"everyone": true}},
+    {"id": "dragon", "part": "companion", "set": "extras", "behavior": "dog", "names": {"de": "Drache", "en": "Dragon"}, "unlock": {"everyone": true}},
+    {"id": "frog", "part": "companion", "set": "extras", "behavior": "dog", "names": {"de": "Frosch", "en": "Frog"}, "unlock": {"everyone": true}}
+  ]
+}
