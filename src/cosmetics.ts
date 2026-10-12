@@ -7,6 +7,7 @@
 //   manual                – handed out by an admin, e.g. for an event
 // Admins can also hand out any other item. Earned and given items are stored in the "unlocks" table,
 // so seasonal items stay when the season ends.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,7 +53,25 @@ export const cosmetics = catalog.items;
 export const cosmeticFile = (item: Cosmetic) => `${item.part}-${item.id}.png`;
 /** Texture id WorkAdventure stores for the item. */
 export const cosmeticTextureId = (item: Cosmetic) => `cosmetic-${item.id}`;
-export const cosmeticUrl = (item: Cosmetic) => `${config.publicUrl}/files/cosmetics/${cosmeticFile(item)}`;
+
+/** Short content hash of a file, added to its URL so browsers and WorkAdventure load a redrawn picture at once. */
+const versions = new Map<string, string>();
+function version(file: string): string {
+    let v = versions.get(file);
+    if (v === undefined) {
+        try {
+            v = crypto.createHash("sha1").update(fs.readFileSync(path.join(COSMETICS_DIR, file))).digest("hex").slice(0, 10);
+        } catch {
+            v = "";
+        }
+        versions.set(file, v);
+    }
+    return v;
+}
+const fileUrl = (file: string) => `${config.publicUrl}/files/cosmetics/${file}${version(file) ? `?v=${version(file)}` : ""}`;
+export const cosmeticUrl = (item: Cosmetic) => fileUrl(cosmeticFile(item));
+/** Still picture of the item alone: standing frame of each direction (down, left, right, up) side by side, 128x32. */
+export const cosmeticIconUrl = (item: Cosmetic) => fileUrl(`icon-${cosmeticFile(item)}`);
 export const cosmeticById = (id: string) => cosmetics.find((c) => c.id === id);
 
 db.exec(`

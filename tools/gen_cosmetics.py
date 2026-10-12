@@ -99,20 +99,32 @@ def put(img, x, y, col):
         img.putpixel((x, y), col + (255,))
 
 
+BODY = None   # WorkAdventure body sheet, set by build_clothes(): from the front the cape hangs behind the arms
+
+
 def cape(main, lining, collar=None, fur=False):
-    """Cape over the shoulders: lining shows at the sides from the front, the full cape from behind."""
+    """Cape over the shoulders: from the front only the edges show beside and behind the arms, the full cape from
+    behind."""
     dark = tuple(max(0, v - 30) for v in main)
+
+    def behind(g, c, x, y, col):
+        """Draws only where neither the garment nor the body (arms) is, so the cape stays behind them."""
+        if not (0 <= x < 32 and 0 <= y < 32) or g.getpixel((x, y))[3]:
+            return
+        if BODY is not None and BODY.getpixel((c * 32 + x, y))[3]:
+            return
+        put(g, x, y, col)
 
     def draw(g, d, c, bob):
         top = 18 + bob - 1
         bottom = 29 + bob
         if d == "down":
-            for y in range(top, bottom):
+            for y in range(top + 1, bottom):
                 spread = (y - top) // 4
-                for x in (9 - spread, 10 - spread):
-                    put(g, x, y, main if x == 9 - spread else lining)
-                for x in (22 + spread, 23 + spread):
-                    put(g, x, y, main if x == 23 + spread else lining)
+                for x in range(6 - spread, 11):
+                    behind(g, c, x, y, K if x == 6 - spread or y == bottom - 1 else lining)
+                for x in range(22, 27 + spread):
+                    behind(g, c, x, y, K if x == 26 + spread or y == bottom - 1 else lining)
             if fur:
                 for x in range(9, 24):
                     put(g, x, top + 1, (244, 242, 236))
@@ -140,8 +152,8 @@ def cape(main, lining, collar=None, fur=False):
                     x = back + step * (i + 1)
                     put(g, x, y, K if i == 1 + spread else main)
             if fur:
-                for i in range(-3, 3):
-                    put(g, back + step * i, top, (244, 242, 236))
+                for i in range(-1, 3):                 # fur collar at the back of the neck only
+                    put(g, back + step * i, top, (20, 20, 22) if i == 1 else (244, 242, 236))
     return draw
 
 
@@ -159,6 +171,8 @@ def chest_print(art_down, pal, y=20):
 
 
 def build_clothes(src):
+    global BODY
+    BODY = Image.open(os.path.join(src, "character_color", "character_color3.png")).convert("RGBA")
     shirt = Image.open(os.path.join(src, "character_clothes", "character_clothes17.png")).convert("RGBA")
     hoodie = Image.open(os.path.join(src, "character_clothes", "white_hoodie.png")).convert("RGBA")
     jeans = [rgb("#1c2a48"), rgb("#2c4272"), rgb("#4a66a0")]
@@ -215,13 +229,12 @@ def build_clothes(src):
     # Roles
     def royal(x, y, d, c):
         bob = 0 if c == 1 else 1
-        if y <= 20 + bob and (d != "down" or abs(x - 16.5) >= 3):   # ermine on the shoulders: white fur, black tips
-            return (20, 20, 22) if (x + 2 * y) % 5 == 0 else (246, 244, 238)
         if d == "down" and x in (16, 17) and y >= 19 + bob:  # gold trim down the front, with buttons
             return (255, 236, 140) if y % 2 else (226, 176, 48)
         return None
+    # red velvet coat, gold trim, ermine collar (white fur, black tips) and a long red cape
     out["royal-robe"] = garment(shirt, [rgb("#5a0814"), rgb("#9a1428"), rgb("#c8283c")], black, pattern=royal,
-                                extra=cape(rgb("#7a0c20"), rgb("#e2b030")))
+                                extra=cape(rgb("#8a1024"), rgb("#6a0a1c"), fur=True))
     return out
 
 
@@ -915,9 +928,30 @@ def build(src, out_dir):
         files[f"accessory-{name}.png"] = sheet(draw)
     for name, im in build_companions().items():
         files[f"companion-{name}.png"] = im
+    for fn, im in list(files.items()):
+        files[f"icon-{fn}"] = icon(im)
     for fn, im in files.items():
         im.save(os.path.join(out_dir, fn), optimize=True)
     return sorted(files)
+
+
+def icon(im):
+    """Still picture for the admin pages: the standing frame of each direction (down, left, right, up), the item
+    alone, centred and enlarged by a whole factor when it is small. All four use the same offset and size, so the item
+    does not jump between directions."""
+    cells = [im.crop((32, r * 32, 64, r * 32 + 32)) for r in range(4)]
+    boxes = [c.getbbox() for c in cells if c.getbbox()]
+    if not boxes:
+        return Image.new("RGBA", (128, 32), (0, 0, 0, 0))
+    x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+    k = max(1, 28 // max(x1 - x0, y1 - y0))
+    w, h = (x1 - x0) * k, (y1 - y0) * k
+    left, top = (32 - w) // 2, (32 - h) // 2
+    out = Image.new("RGBA", (128, 32), (0, 0, 0, 0))
+    for i, c in enumerate(cells):
+        out.alpha_composite(c.crop((x0, y0, x1, y1)).resize((w, h), Image.NEAREST), (i * 32 + left, top))
+    return out
 
 
 if __name__ == "__main__":

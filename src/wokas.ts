@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listCustomWokas, type CustomWoka } from "./db.js";
 import { config } from "./config.js";
-import { cosmeticSets, cosmeticTextureId, cosmeticUrl, cosmeticsFor, hasCosmetic, cosmetics, type CosmeticViewer } from "./cosmetics.js";
+import { cosmeticSets, cosmeticTextureId, cosmeticUrl, cosmeticsFor, hasCosmetic, cosmetics, type Cosmetic, type CosmeticViewer } from "./cosmetics.js";
 
 // Same order WorkAdventure uses to stack the layers of a woka.
 export const WOKA_PARTS = ["woka", "body", "eyes", "hair", "clothes", "hat", "accessory"] as const;
@@ -176,17 +176,15 @@ export const companions: CompanionCollection[] = JSON.parse(fs.readFileSync(path
 export function companionsFor(viewer: CosmeticViewer, lang: "de" | "en" = "en"): CompanionCollection[] {
     const list = structuredClone(companions);
     if (!config.publicUrl) return list;
+    // WorkAdventure only shows one collection at a time and the switch is easy to miss, so the unlocked
+    // companions go right after the official ones in the first collection.
     const own = cosmeticsFor(viewer).filter((c) => c.part === "companion");
-    cosmeticSets.forEach((set, index) => {
-        const items = own.filter((c) => c.set === set.key);
-        if (items.length) {
-            list.push({
-                name: set.names[lang],
-                position: 100 + index,
-                textures: items.map((item) => ({ id: cosmeticTextureId(item), name: item.names[lang], url: cosmeticUrl(item), ...(item.behavior ? { behavior: item.behavior } : {}) })),
-            });
-        }
-    });
+    const order = (c: Cosmetic) => cosmeticSets.findIndex((s) => s.key === c.set);
+    list[0]?.textures.push(
+        ...own
+            .sort((a, b) => order(a) - order(b))
+            .map((item) => ({ id: cosmeticTextureId(item), name: item.names[lang], url: cosmeticUrl(item), ...(item.behavior ? { behavior: item.behavior } : {}) })),
+    );
     return list;
 }
 

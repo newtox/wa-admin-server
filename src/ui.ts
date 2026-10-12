@@ -20,7 +20,7 @@ import { langFrom, matchLang, styleLabel, t, type Lang } from "./i18n.js";
 import { adminText, type AdminTexts } from "./adminI18n.js";
 import { createInvite, deleteInvite, invitesEnabled, listInvites, type Invite } from "./invites.js";
 import {
-    COSMETICS_DIR, cosmeticById, cosmeticHolders, cosmeticSets, cosmetics, cosmeticsFor, cosmeticUrl, grantCosmetic,
+    COSMETICS_DIR, cosmeticById, cosmeticHolders, cosmeticSets, cosmetics, cosmeticsFor, cosmeticIconUrl, grantCosmetic,
     revokeCosmetic, unlockHint, unlockShort, visitorsOn, type Cosmetic,
 } from "./cosmetics.js";
 
@@ -275,7 +275,8 @@ form.inline{display:inline}
 .dirs{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}.dirs .sprite{border-radius:12px;background-color:var(--surface-2)}
 .dirs .sprite.big:nth-child(2){animation-name:walkbig2}.dirs .sprite.big:nth-child(3){animation-name:walkbig3}.dirs .sprite.big:nth-child(4){animation-name:walkbig4}
 @keyframes walkbig2{from{background-position:0 -96px}to{background-position:-288px -96px}}@keyframes walkbig3{from{background-position:0 -192px}to{background-position:-288px -192px}}@keyframes walkbig4{from{background-position:0 -288px}to{background-position:-288px -288px}}
-.stack{position:relative;width:64px;height:64px;flex:none}.stack .sprite{position:absolute;inset:0}
+.cicon{display:block;width:64px;height:64px;flex:none;background-size:256px 64px;background-repeat:no-repeat;image-rendering:pixelated}
+.cicon.big{width:96px;height:96px;background-size:384px 96px}.dirs .cicon{border-radius:12px;background-color:var(--surface-2)}
 .stack.big{width:96px;height:96px}
 .owners .list-head,.owners .row{grid-template-columns:minmax(0,1fr) auto}
 .layers{position:relative;width:48px;height:48px;flex:none;border-radius:12px;background:var(--surface-2);overflow:hidden}
@@ -696,30 +697,9 @@ const n=document.getElementById("newlink");n&&n.addEventListener("focus",()=>n.s
 
 // ---------- cosmetics ----------
 
-const BASE_LAYERS = {
-    body: "resources/customisation/character_color/character_color2.png",
-    eyes: "resources/customisation/character_eyes/character_eyes1.png",
-    hair: "resources/customisation/character_hairs/character_hairs1.png",
-    clothes: "resources/customisation/character_clothes/character_clothes17.png",
-};
-
-/** Layers to show an item on a plain woka (the item alone when WorkAdventure's URL is unknown or it is a companion). */
-function cosmeticLayers(item: Cosmetic): string[] {
-    const own = cosmeticUrl(item);
-    if (item.part === "companion" || !config.playUrl) return [own];
-    const layer = (part: keyof typeof BASE_LAYERS) => (item.part === part ? own : layerUrl(BASE_LAYERS[part]));
-    const out = [layerUrl(BASE_LAYERS.body), layer("eyes")];
-    if (item.part !== "hat") out.push(layerUrl(BASE_LAYERS.hair));
-    out.push(layer("clothes"));
-    if (item.part === "hat" || item.part === "accessory") out.push(own);
-    return out;
-}
-
-function cosmeticStack(item: Cosmetic, big = false, dir = 0): string {
-    const anim = big ? ["walkbig", "walkbig2", "walkbig3", "walkbig4"][dir] : "walk";
-    return `<span class="stack${big ? " big" : ""}">${cosmeticLayers(item)
-        .map((u) => `<span class="sprite${big ? " big" : ""}" style="background-image:url('${esc(u)}');animation-name:${anim}"></span>`)
-        .join("")}</span>`;
+/** The item alone, standing still; dir 0..3 = down, left, right, up. */
+function cosmeticIcon(item: Cosmetic, big = false, dir = 0): string {
+    return `<span class="cicon${big ? " big" : ""}" style="background-image:url('${esc(cosmeticIconUrl(item))}');background-position:${-dir * (big ? 96 : 64)}px 0"></span>`;
 }
 
 function ruleChip(item: Cosmetic, c: Ctx, long = false): string {
@@ -740,7 +720,7 @@ function cosmeticsPage(c: Ctx, message?: string): string {
             if (!items.length) return "";
             return `<h2 class="section-title" style="margin-top:8px">${esc(set.names[c.lang])}</h2><div class="grid" style="margin-bottom:22px">${items
                 .map(
-                    (item) => `<a class="card woka" href="/cosmetics/${encodeURIComponent(item.id)}"><span class="stage">${cosmeticStack(item)}</span>
+                    (item) => `<a class="card woka" href="/cosmetics/${encodeURIComponent(item.id)}"><span class="stage">${cosmeticIcon(item)}</span>
 <div><h3>${esc(item.names[c.lang])}</h3><div class="part">${esc(a.parts[item.part] ?? a.companion)} · ${esc(a.ownersCount(cosmeticHolders(item, members()).length))}</div></div><div class="chips">${ruleChip(item, c)}</div></a>`,
                 )
                 .join("")}</div>`;
@@ -772,7 +752,7 @@ function cosmeticPage(c: Ctx, item: Cosmetic, message?: string): string {
 <a class="crumb" href="/cosmetics">${icon("back")}${a.allCosmetics}</a>
 ${pageHead(item.names[c.lang], `${cosmeticSets.find((x) => x.key === item.set)?.names[c.lang] ?? item.set} · ${a.parts[item.part] ?? a.companion}`)}
 <div class="split">
-<div class="sticky"><div class="card"><h2>${a.preview}</h2><div class="dirs preview">${[0, 1, 2, 3].map((d) => cosmeticStack(item, true, d)).join("")}</div></div>
+<div class="sticky"><div class="card"><h2>${a.preview}</h2><div class="dirs preview">${[0, 1, 2, 3].map((d) => cosmeticIcon(item, true, d)).join("")}</div></div>
 <div class="card"><h2>${a.rule}</h2><div class="chips">${ruleChip(item, c, true)}</div></div></div>
 <div>
 <div class="card"><h2>${a.grantTitle}</h2>
@@ -796,10 +776,7 @@ function cosmeticsSection(viewer: { identifier: string; tags: string[] }, lang: 
             return `<h3>${esc(set.names[lang])}</h3><div class="cosgrid">${items
                 .map((item) => {
                     const on = have.has(item.id);
-                    const layers = cosmeticLayers(item)
-                        .map((u) => `<div style="background-image:url('${esc(u)}')"></div>`)
-                        .join("");
-                    return `<div class="cositem${on ? "" : " off"}" title="${esc(unlockHint(item, lang))}"><div class="walk">${layers}</div><b>${esc(item.names[lang])}</b><small>${on ? "✓" : `🔒 ${esc(unlockHint(item, lang))}`}</small></div>`;
+                    return `<div class="cositem${on ? "" : " off"}" title="${esc(unlockHint(item, lang))}"><div class="cicon" style="background-image:url('${esc(cosmeticIconUrl(item))}')"></div><b>${esc(item.names[lang])}</b><small>${on ? "✓" : `🔒 ${esc(unlockHint(item, lang))}`}</small></div>`;
                 })
                 .join("")}</div>`;
         })
@@ -946,10 +923,9 @@ details{margin-top:14px}summary{cursor:pointer;color:rgba(255,255,255,.8)}
 h3{font-size:13px;margin:12px 0 6px;color:rgba(255,255,255,.75)}
 .cosgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
 .cositem{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px;border-radius:8px;background:rgba(0,0,0,.25);text-align:center}
-.cositem .walk{width:64px;height:64px;background:none}.cositem .walk div{background-size:192px 256px;animation-name:ws}
-@keyframes ws{from{background-position:0 0}to{background-position:-192px 0}}
+.cositem .cicon{width:64px;height:64px;background-size:256px 64px;background-repeat:no-repeat;image-rendering:pixelated}
 .cositem b{font-size:12.5px;font-weight:600}.cositem small{font-size:11px;color:rgba(255,255,255,.6);line-height:1.3}
-.cositem.off .walk{filter:grayscale(1) brightness(.6)}.cositem.off b{color:rgba(255,255,255,.6)}
+.cositem.off .cicon{filter:grayscale(1) brightness(.6)}.cositem.off b{color:rgba(255,255,255,.6)}
 </style></head><body>${body}</body></html>`;
 }
 
@@ -1117,7 +1093,13 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
     if (cosmeticFileMatch && req.method === "GET") {
         const filePath = path.join(COSMETICS_DIR, cosmeticFileMatch[1]!);
         if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: "not found" });
-        res.writeHead(200, { "Content-Type": "image/png", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=604800", "X-Content-Type-Options": "nosniff" });
+        // URLs carry ?v=<hash of the file>, so a redrawn picture gets a new URL and may be cached for good.
+        res.writeHead(200, {
+            "Content-Type": "image/png",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": url.searchParams.has("v") ? "public, max-age=31536000, immutable" : "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        });
         return void fs.createReadStream(filePath).pipe(res);
     }
 
