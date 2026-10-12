@@ -20,9 +20,11 @@ import { langFrom, matchLang, styleLabel, t, type Lang } from "./i18n.js";
 import { adminText, type AdminTexts } from "./adminI18n.js";
 import { createInvite, deleteInvite, invitesEnabled, listInvites, type Invite } from "./invites.js";
 import {
-    COSMETICS_DIR, cosmeticById, cosmeticHolders, cosmeticSets, cosmetics, cosmeticsFor, cosmeticIconUrl, grantCosmetic,
-    revokeCosmetic, unlockHint, unlockShort, visitorsOn, type Cosmetic,
+    BEHAVIORS, CUSTOM_PARTS, CUSTOM_SET, cosmeticById, cosmeticFilePath, cosmeticHolders, cosmeticSets, cosmetics, cosmeticsFor, cosmeticIconUrl,
+    deleteCustomCosmetic, grantCosmetic, newCustomCosmeticId, renameCustomCosmeticFiles, revokeCosmetic, saveCustomCosmetic, storeCustomCosmeticImage,
+    unlockHint, unlockShort, visitorsOn, type Cosmetic, type Unlock,
 } from "./cosmetics.js";
+import { cosmeticIconPng } from "./cosmeticIcon.js";
 
 const WOKA_DIR = path.join(config.dataDir, "wokas");
 const OG_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "og-image.png");
@@ -269,12 +271,11 @@ button.icon-only{padding:7px}
 form.inline{display:inline}
 
 /* sprites */
-.sprite{width:64px;height:64px;flex:none;background-size:192px 256px;background-repeat:no-repeat;image-rendering:pixelated;animation:walk .6s steps(3) infinite}
-.sprite.big{width:96px;height:96px;background-size:288px 384px;animation-name:walkbig}
-@keyframes walk{from{background-position:0 0}to{background-position:-192px 0}}@keyframes walkbig{from{background-position:0 0}to{background-position:-288px 0}}
+/* avatar sheets shown still: the standing (middle) frame; in .dirs one direction per tile */
+.sprite{width:64px;height:64px;flex:none;background-size:192px 256px;background-position:-64px 0;background-repeat:no-repeat;image-rendering:pixelated}
+.sprite.big{width:96px;height:96px;background-size:288px 384px;background-position:-96px 0}
 .dirs{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}.dirs .sprite{border-radius:12px;background-color:var(--surface-2)}
-.dirs .sprite.big:nth-child(2){animation-name:walkbig2}.dirs .sprite.big:nth-child(3){animation-name:walkbig3}.dirs .sprite.big:nth-child(4){animation-name:walkbig4}
-@keyframes walkbig2{from{background-position:0 -96px}to{background-position:-288px -96px}}@keyframes walkbig3{from{background-position:0 -192px}to{background-position:-288px -192px}}@keyframes walkbig4{from{background-position:0 -288px}to{background-position:-288px -288px}}
+.dirs .sprite.big:nth-child(2){background-position:-96px -96px}.dirs .sprite.big:nth-child(3){background-position:-96px -192px}.dirs .sprite.big:nth-child(4){background-position:-96px -288px}
 .cicon{display:block;width:64px;height:64px;flex:none;background-size:256px 64px;background-repeat:no-repeat;image-rendering:pixelated}
 .cicon.big{width:96px;height:96px;background-size:384px 96px}.dirs .cicon{border-radius:12px;background-color:var(--surface-2)}
 .stack.big{width:96px;height:96px}
@@ -721,17 +722,123 @@ function cosmeticsPage(c: Ctx, message?: string): string {
             return `<h2 class="section-title" style="margin-top:8px">${esc(set.names[c.lang])}</h2><div class="grid" style="margin-bottom:22px">${items
                 .map(
                     (item) => `<a class="card woka" href="/cosmetics/${encodeURIComponent(item.id)}"><span class="stage">${cosmeticIcon(item)}</span>
-<div><h3>${esc(item.names[c.lang])}</h3><div class="part">${esc(a.parts[item.part] ?? a.companion)} · ${esc(a.ownersCount(cosmeticHolders(item, members()).length))}</div></div><div class="chips">${ruleChip(item, c)}</div></a>`,
+<div><h3>${esc(item.names[c.lang])}</h3><div class="part">${esc(partName(item.part, a))} · ${esc(a.ownersCount(cosmeticHolders(item, members()).length))}</div></div><div class="chips">${ruleChip(item, c)}</div></a>`,
                 )
                 .join("")}</div>`;
         })
         .join("");
+    const partOptions = CUSTOM_PARTS.map((p) => `<option value="${p}">${esc(partName(p, a))}</option>`).join("");
     return layout(c, a.cosmeticsTitle, "cosmetics", `${flash(message)}
 ${pageHead(a.cosmeticsTitle, a.cosmeticsCount(cosmetics.length), a.cosmeticsSub)}
-${sets}`);
+<div class="card"><h2>${a.cosUploadTitle}</h2><p class="hint">${a.cosUploadHint}</p>
+<form id="upload">${csrfInput(s)}<div class="upload-grid">
+<div><label for="file" class="drop" id="drop">${icon("upload")}<strong>${a.dropHint}</strong><span class="small">${a.dropSize}</span><input id="file" type="file" accept="image/png" hidden></label>
+<div id="preview" class="dirs" style="margin-top:12px"></div></div>
+<div><div class="field"><label for="name">${a.name}</label><input id="name" type="text" maxlength="40" required></div>
+<div class="field"><label for="part">${a.type}</label><select id="part">${partOptions}</select></div>
+<div id="error" class="msg err" style="display:none"></div>
+<button type="submit">${icon("upload")}${a.upload}</button></div>
+</div></form></div>
+${sets}
+<script>
+const csrf=${JSON.stringify(csrfFor(s))},T=${JSON.stringify({ chooseFirst: a.chooseFirst, failed: a.uploadFailed })};
+const file=document.getElementById("file"),drop=document.getElementById("drop"),preview=document.getElementById("preview"),err=document.getElementById("error");
+let chosen=null;
+function show(f){chosen=f;const url=URL.createObjectURL(f);preview.innerHTML=[0,1,2,3].map(()=>'<div class="sprite big" style="background-image:url('+url+')"></div>').join("");
+ const n=document.getElementById("name");if(!n.value)n.value=f.name.replace(/\\.png$/i,"");}
+file.addEventListener("change",()=>file.files[0]&&show(file.files[0]));
+["dragenter","dragover"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(t=>drop.addEventListener(t,()=>drop.classList.remove("over")));
+drop.addEventListener("drop",e=>{e.preventDefault();e.dataTransfer.files[0]&&show(e.dataTransfer.files[0])});
+document.getElementById("upload").addEventListener("submit",async e=>{e.preventDefault();err.style.display="none";
+ if(!chosen){err.textContent=T.chooseFirst;err.style.display="flex";return}
+ const r=await fetch("/cosmetics",{method:"POST",body:chosen,headers:{"Content-Type":"image/png","X-CSRF":csrf,"X-Name":encodeURIComponent(document.getElementById("name").value),"X-Part":document.getElementById("part").value}});
+ const d=await r.json().catch(()=>({}));if(!r.ok){err.textContent=d.error||T.failed;err.style.display="flex";return}
+ location.href="/cosmetics/"+encodeURIComponent(d.id)+"?neu=1";});
+</script>`);
 }
 
-function cosmeticPage(c: Ctx, item: Cosmetic, message?: string): string {
+/** Still icon of an uploaded sheet; a PNG the small decoder cannot read (e.g. interlaced) is refused. */
+function cosmeticIconOf(data: Buffer, a: AdminTexts): Buffer {
+    try {
+        return cosmeticIconPng(data);
+    } catch {
+        throw new HttpError(400, a.notPng);
+    }
+}
+
+const partName = (part: string, a: AdminTexts) => (part === "companion" ? a.companion : (a.parts[part] ?? part));
+
+/** Form to change an uploaded item: names, type, set, behaviour and how it is unlocked. */
+function cosmeticEditForm(c: Ctx, item: Cosmetic): string {
+    const a = c.a;
+    const u = item.unlock;
+    const rule = u.everyone ? "everyone" : u.tags ? "tags" : u.season ? "season" : "manual";
+    const year = new Date().getFullYear();
+    const date = (md?: string) => (md ? `${year}-${md}` : "");
+    const opt = (value: string, label: string, selected: boolean) => `<option value="${esc(value)}"${selected ? " selected" : ""}>${esc(label)}</option>`;
+    const radio = (value: string, label: string) => `<label><input type="radio" name="rule" value="${value}"${rule === value ? " checked" : ""}> ${esc(label)}</label>`;
+    const tagChecks = knownTags()
+        .map((tag) => `<label><input type="checkbox" name="tags" value="${esc(tag)}"${u.tags?.includes(tag) ? " checked" : ""}> ${esc(roleStyle(tag, c.lang).label)}</label>`)
+        .join("");
+    return `<form method="post" action="/cosmetics/${encodeURIComponent(item.id)}/edit" class="card" id="cosedit">${csrfInput(c.s!)}<h2>${a.editCosmetic}</h2>
+<div class="field"><label for="name_de">${a.nameDe}</label><input id="name_de" name="name_de" type="text" maxlength="40" value="${esc(item.names.de)}" required></div>
+<div class="field"><label for="name_en">${a.nameEn}</label><input id="name_en" name="name_en" type="text" maxlength="40" value="${esc(item.names.en)}"></div>
+<div class="field"><label for="part">${a.type}</label><select id="part" name="part">${CUSTOM_PARTS.map((p) => opt(p, partName(p, a), p === item.part)).join("")}</select></div>
+<div class="field" id="behavior-field"><label for="behavior">${a.behavior}</label><select id="behavior" name="behavior">${BEHAVIORS.map((b) => opt(b, a.behaviors[b] ?? b, b === (item.behavior ?? "dog"))).join("")}</select></div>
+<div class="field"><label for="set">${a.set}</label><select id="set" name="set">${cosmeticSets.map((x) => opt(x.key, x.names[c.lang], x.key === item.set)).join("")}</select></div>
+<label>${a.rule}</label><div class="checks">${radio("everyone", a.ruleEveryone)}${radio("tags", a.ruleTags)}${radio("season", a.ruleSeason)}${radio("manual", a.ruleManual)}</div>
+<div id="rule-tags"><label>${a.ruleTags}</label><div class="checks">${tagChecks}</div></div>
+<div id="rule-season" class="field"><label>${a.ruleSeason}</label><div style="display:flex;gap:10px;align-items:center"><span>${a.seasonFrom}</span><input type="date" name="from" value="${esc(date(u.season?.from))}"><span>${a.seasonTo}</span><input type="date" name="to" value="${esc(date(u.season?.to))}"></div><p class="hint">${a.seasonHint}</p></div>
+<div style="margin-top:16px"><button type="submit">${a.save}</button></div></form>
+<script>(()=>{const f=document.getElementById("cosedit"),show=()=>{const r=(f.querySelector("input[name=rule]:checked")||{}).value;
+document.getElementById("rule-tags").style.display=r==="tags"?"":"none";document.getElementById("rule-season").style.display=r==="season"?"":"none";
+document.getElementById("behavior-field").style.display=f.part.value==="companion"?"":"none"};f.addEventListener("change",show);show()})();</script>`;
+}
+
+/** Reads the edit form; throws with a readable message when something is missing. */
+function cosmeticFromForm(item: Cosmetic, form: URLSearchParams, a: AdminTexts): Cosmetic {
+    const de = (form.get("name_de") ?? "").trim().slice(0, 40);
+    const en = (form.get("name_en") ?? "").trim().slice(0, 40) || de;
+    if (!de) throw new HttpError(400, a.nameMissing);
+    const part = form.get("part") ?? "";
+    if (!(CUSTOM_PARTS as readonly string[]).includes(part)) throw new HttpError(400, a.unknownType);
+    const set = cosmeticSets.some((x) => x.key === form.get("set")) ? form.get("set")! : CUSTOM_SET;
+    const behavior = form.get("behavior") ?? "dog";
+    let unlock: Unlock;
+    switch (form.get("rule")) {
+        case "everyone":
+            unlock = { everyone: true };
+            break;
+        case "tags": {
+            const tags = form.getAll("tags").filter((tag) => knownTags().includes(tag));
+            if (!tags.length) throw new HttpError(400, a.pickRole);
+            unlock = { tags };
+            break;
+        }
+        case "season": {
+            const md = (v: string | null) => (/^\d{4}-\d{2}-\d{2}$/.test(v ?? "") ? v!.slice(5) : "");
+            const from = md(form.get("from"));
+            const to = md(form.get("to"));
+            if (!from || !to) throw new HttpError(400, a.seasonMissing);
+            unlock = { season: { from, to } };
+            break;
+        }
+        default:
+            unlock = { manual: true };
+    }
+    return {
+        id: item.id,
+        part: part as Cosmetic["part"],
+        set,
+        names: { de, en },
+        ...(part === "companion" ? { behavior: ((BEHAVIORS as readonly string[]).includes(behavior) ? behavior : "dog") as Cosmetic["behavior"] } : {}),
+        unlock,
+        custom: true,
+    };
+}
+
+function cosmeticPage(c: Ctx, item: Cosmetic, message?: string, error = false): string {
     const s = c.s!;
     const a = c.a;
     const owners = cosmeticHolders(item, members());
@@ -748,13 +855,24 @@ function cosmeticPage(c: Ctx, item: Cosmetic, message?: string): string {
     const memberOptions = realUsers()
         .map((u) => `<option value="${esc(u.identifier)}">${esc(u.username ?? u.name ?? u.identifier)}</option>`)
         .join("");
-    return layout(c, item.names[c.lang], "cosmetics", `${flash(message)}
+    return layout(c, item.names[c.lang], "cosmetics", `${flash(message, error)}
 <a class="crumb" href="/cosmetics">${icon("back")}${a.allCosmetics}</a>
-${pageHead(item.names[c.lang], `${cosmeticSets.find((x) => x.key === item.set)?.names[c.lang] ?? item.set} · ${a.parts[item.part] ?? a.companion}`)}
+${pageHead(item.names[c.lang], `${cosmeticSets.find((x) => x.key === item.set)?.names[c.lang] ?? item.set} · ${esc(partName(item.part, a))}`)}
 <div class="split">
 <div class="sticky"><div class="card"><h2>${a.preview}</h2><div class="dirs preview">${[0, 1, 2, 3].map((d) => cosmeticIcon(item, true, d)).join("")}</div></div>
-<div class="card"><h2>${a.rule}</h2><div class="chips">${ruleChip(item, c, true)}</div></div></div>
+<div class="card"><h2>${a.rule}</h2><div class="chips">${ruleChip(item, c, true)}</div>${item.custom ? "" : `<p class="hint" style="margin:10px 0 0">${a.builtin}</p>`}</div>
+${
+    item.custom
+        ? `<div class="card"><h2>${a.replaceImage}</h2><input id="file" type="file" accept="image/png"><div id="error" class="msg err" style="display:none;margin-top:12px"></div>
+<button id="replace" class="secondary" type="button" style="margin-top:12px">${icon("upload")}${a.uploadNewImage}</button></div>
+<script>document.getElementById("replace").addEventListener("click",async()=>{const f=document.getElementById("file").files[0],err=document.getElementById("error");
+ if(!f){err.textContent=${JSON.stringify(a.chooseFirst)};err.style.display="flex";return}
+ const r=await fetch(location.pathname+"/image",{method:"POST",body:f,headers:{"Content-Type":"image/png","X-CSRF":${JSON.stringify(csrfFor(s))}}});
+ const d=await r.json().catch(()=>({}));if(!r.ok){err.textContent=d.error||${JSON.stringify(a.uploadFailed)};err.style.display="flex";return}location.reload();});</script>`
+        : ""
+}</div>
 <div>
+${item.custom ? cosmeticEditForm(c, item) : ""}
 <div class="card"><h2>${a.grantTitle}</h2>
 <form method="post" action="/cosmetics/${encodeURIComponent(item.id)}/grant">${csrfInput(s)}
 <div class="field"><label for="member">${a.grantUser}</label><select id="member" name="member"><option value="">${a.pickMember}</option>${memberOptions}</select></div>
@@ -762,6 +880,12 @@ ${pageHead(item.names[c.lang], `${cosmeticSets.find((x) => x.key === item.set)?.
 <button type="submit">${icon("unlock")}${a.grant}</button></form></div>
 <div class="list owners"><div class="list-head"><span>${a.owners} · ${esc(a.ownersCount(owners.length))}</span><span></span></div>
 ${ownerRows || `<div class="empty">${icon("cosmetics")}<span>${a.ownersNone}</span></div>`}</div>
+${
+    item.custom
+        ? `<form method="post" action="/cosmetics/${encodeURIComponent(item.id)}/delete" class="card danger" style="margin-top:18px" onsubmit="return confirm(${esc(JSON.stringify(a.confirmDeleteCosmetic))})">${csrfInput(s)}
+<h2>${a.deleteCosmetic}</h2><p class="hint">${a.deleteCosmeticHint}</p><button class="danger" type="submit">${icon("trash")}${a.deleteCosmetic}</button></form>`
+        : ""
+}
 </div></div>`);
 }
 
@@ -773,6 +897,7 @@ function cosmeticsSection(viewer: { identifier: string; tags: string[] }, lang: 
     const sets = cosmeticSets
         .map((set) => {
             const items = cosmetics.filter((i) => i.set === set.key);
+            if (!items.length) return "";
             return `<h3>${esc(set.names[lang])}</h3><div class="cosgrid">${items
                 .map((item) => {
                     const on = have.has(item.id);
@@ -1098,7 +1223,7 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
     // Unlockable cosmetics (clothes, hats, accessories, companions).
     const cosmeticFileMatch = /^\/files\/cosmetics\/([a-z]+-[a-z0-9-]+\.png)$/.exec(p);
     if (cosmeticFileMatch && req.method === "GET") {
-        const filePath = path.join(COSMETICS_DIR, cosmeticFileMatch[1]!);
+        const filePath = cosmeticFilePath(cosmeticFileMatch[1]!);
         if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: "not found" });
         // URLs carry ?v=<hash of the file>, so a redrawn picture gets a new URL and may be cached for good.
         res.writeHead(200, {
@@ -1311,15 +1436,71 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
         return html(res, 200, membersPage({ ...ctx, path: "/members" }, a.unbannedMsg(nameOf(id))));
     }
     if (req.method === "GET" && p === "/cosmetics") return html(res, 200, cosmeticsPage(ctx));
-    const cosmetic = /^\/cosmetics\/([a-z0-9-]+)(\/grant|\/revoke)?$/.exec(p);
+    if (req.method === "POST" && p === "/cosmetics") {
+        if (!config.publicUrl) throw new HttpError(400, a.cosmeticsOff);
+        checkCsrf(s, req.headers["x-csrf"] as string | undefined, a);
+        const name = decodeURIComponent(String(req.headers["x-name"] ?? "")).trim().slice(0, 40);
+        const part = String(req.headers["x-part"] ?? "");
+        if (!name) throw new HttpError(400, a.nameMissing);
+        if (!(CUSTOM_PARTS as readonly string[]).includes(part)) throw new HttpError(400, a.unknownType);
+        const data = await readBody(req, 512 * 1024, a.tooBig);
+        checkWokaPng(data, a);
+        const iconPng = cosmeticIconOf(data, a);
+        // New items are only handed out by admins until a rule is set.
+        const item: Cosmetic = {
+            id: newCustomCosmeticId(),
+            part: part as Cosmetic["part"],
+            set: CUSTOM_SET,
+            names: { de: name, en: name },
+            ...(part === "companion" ? { behavior: "dog" as const } : {}),
+            unlock: { manual: true },
+            custom: true,
+        };
+        storeCustomCosmeticImage(item, data, iconPng);
+        saveCustomCosmetic(item);
+        console.info(`cosmetic ${item.id} uploaded by ${s.sub}`);
+        return sendJson(res, 201, { id: item.id });
+    }
+    const cosmetic = /^\/cosmetics\/([a-z0-9-]+)(\/grant|\/revoke|\/edit|\/image|\/delete)?$/.exec(p);
     if (cosmetic) {
         const item = cosmeticById(cosmetic[1]!);
         if (!item) return html(res, 404, layout(ctx, a.notFound, "cosmetics", `${pageHead(a.notFound)}<div class="card empty">${icon("cosmetics")}<span>${a.pageNotFound}</span></div>`));
-        if (req.method === "GET" && !cosmetic[2]) return html(res, 200, cosmeticPage(ctx, item));
+        if (req.method === "GET" && !cosmetic[2]) return html(res, 200, cosmeticPage(ctx, item, url.searchParams.has("neu") ? a.cosCreated(item.names[ctx.lang]) : undefined));
+        const here = { ...ctx, path: `/cosmetics/${item.id}` };
+        if (req.method === "POST" && cosmetic[2] === "/image") {
+            if (!item.custom) throw new HttpError(400, a.builtin);
+            checkCsrf(s, req.headers["x-csrf"] as string | undefined, a);
+            const data = await readBody(req, 512 * 1024, a.tooBig);
+            checkWokaPng(data, a);
+            storeCustomCosmeticImage(item, data, cosmeticIconOf(data, a));
+            return sendJson(res, 200, { id: item.id });
+        }
+        if (req.method === "POST" && cosmetic[2] === "/edit") {
+            if (!item.custom) throw new HttpError(400, a.builtin);
+            const form = await readForm(req);
+            checkCsrf(s, form.get("csrf"), a);
+            let changed: Cosmetic;
+            try {
+                changed = cosmeticFromForm(item, form, a);
+            } catch (err) {
+                if (err instanceof HttpError) return html(res, 400, cosmeticPage(here, item, err.message, true));
+                throw err;
+            }
+            renameCustomCosmeticFiles(item, changed);
+            saveCustomCosmetic(changed);
+            console.info(`cosmetic ${item.id} changed by ${s.sub}`);
+            return html(res, 200, cosmeticPage(here, cosmeticById(item.id)!, a.cosSaved));
+        }
+        if (req.method === "POST" && cosmetic[2] === "/delete") {
+            if (!item.custom) throw new HttpError(400, a.builtin);
+            checkCsrf(s, (await readForm(req)).get("csrf"), a);
+            deleteCustomCosmetic(item);
+            console.info(`cosmetic ${item.id} deleted by ${s.sub}`);
+            return html(res, 200, cosmeticsPage({ ...ctx, path: "/cosmetics" }, a.cosDeleted(item.names[ctx.lang])));
+        }
         if (req.method === "POST" && cosmetic[2]) {
             const form = await readForm(req);
             checkCsrf(s, form.get("csrf"), a);
-            const here = { ...ctx, path: `/cosmetics/${item.id}` };
             if (cosmetic[2] === "/revoke") {
                 const id = form.get("id") ?? "";
                 revokeCosmetic(id, item.id);

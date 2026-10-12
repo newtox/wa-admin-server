@@ -32,6 +32,8 @@ export interface Cosmetic {
     names: Record<Lang, string>;
     behavior?: "cat" | "dog" | "red_panda";
     unlock: Unlock;
+    /** Uploaded in the admin UI (stored in DATA_DIR/cosmetics), not part of the bundled catalog. */
+    custom?: boolean;
 }
 
 interface CosmeticSet {
@@ -45,9 +47,16 @@ export interface CosmeticViewer {
 }
 
 export const COSMETICS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "cosmetics");
+/** Cosmetics uploaded in the admin UI: pictures here, the rest in the "custom_cosmetics" table. */
+export const CUSTOM_COSMETICS_DIR = path.join(config.dataDir, "cosmetics");
 const catalog: { sets: CosmeticSet[]; items: Cosmetic[] } = JSON.parse(fs.readFileSync(path.join(COSMETICS_DIR, "cosmetics.json"), "utf8"));
-export const cosmeticSets = catalog.sets;
-export const cosmetics = catalog.items;
+/** Set for uploaded items that belong to none of the others. */
+export const CUSTOM_SET = "custom";
+export const cosmeticSets: CosmeticSet[] = [...catalog.sets, { key: CUSTOM_SET, names: { de: "Eigene", en: "Custom" } }];
+/** Bundled items followed by the uploaded ones; kept up to date in place by reloadCustomCosmetics(). */
+export const cosmetics: Cosmetic[] = [...catalog.items];
+export const CUSTOM_PARTS = ["clothes", "hat", "accessory", "eyes", "companion"] as const;
+export const BEHAVIORS = ["dog", "cat", "red_panda"] as const;
 
 /** File of an item: "hat-crown.png", "companion-bat.png", … */
 export const cosmeticFile = (item: Cosmetic) => `${item.part}-${item.id}.png`;
@@ -56,11 +65,15 @@ export const cosmeticTextureId = (item: Cosmetic) => `cosmetic-${item.id}`;
 
 /** Short content hash of a file, added to its URL so browsers and WorkAdventure load a redrawn picture at once. */
 const versions = new Map<string, string>();
+/** Where a cosmetics file lives: bundled ones in data/cosmetics, uploaded ones (custom-…) in DATA_DIR/cosmetics. */
+export function cosmeticFilePath(file: string): string {
+    return path.join(/^(icon-)?[a-z]+-custom-/.test(file) ? CUSTOM_COSMETICS_DIR : COSMETICS_DIR, file);
+}
 function version(file: string): string {
     let v = versions.get(file);
     if (v === undefined) {
         try {
-            v = crypto.createHash("sha1").update(fs.readFileSync(path.join(COSMETICS_DIR, file))).digest("hex").slice(0, 10);
+            v = crypto.createHash("sha1").update(fs.readFileSync(cosmeticFilePath(file))).digest("hex").slice(0, 10);
         } catch {
             v = "";
         }
@@ -81,6 +94,16 @@ db.exec(`
         day        TEXT NOT NULL,
         PRIMARY KEY (identifier, day)
     );
+    -- Cosmetics uploaded in the admin UI. names and unlock are JSON like in cosmetics.json.
+    CREATE TABLE IF NOT EXISTS custom_cosmetics (
+        id         TEXT PRIMARY KEY,
+        part       TEXT NOT NULL,
+        set_key    TEXT NOT NULL,
+        names      TEXT NOT NULL,
+        behavior   TEXT,
+        unlock     TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    );
     -- Cosmetics a player earned or was given. source: season | manual
     CREATE TABLE IF NOT EXISTS unlocks (
         identifier TEXT NOT NULL COLLATE NOCASE,
@@ -98,7 +121,70 @@ const st = {
     revoke: db.prepare("DELETE FROM unlocks WHERE identifier = ? AND item = ?"),
     unlocksOf: db.prepare("SELECT item FROM unlocks WHERE identifier = ?"),
     owners: db.prepare("SELECT identifier, source, created_at FROM unlocks WHERE item = ? ORDER BY created_at"),
+    customAll: db.prepare("SELECT * FROM custom_cosmetics ORDER BY created_at, id"),
+    customSave: db.prepare(`INSERT INTO custom_cosmetics (id, part, set_key, names, behavior, unlock) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET part = excluded.part, set_key = excluded.set_key, names = excluded.names, behavior = excluded.behavior, unlock = excluded.unlock`),
+    customDelete: db.prepare("DELETE FROM custom_cosmetics WHERE id = ?"),
+    unlocksDelete: db.prepare("DELETE FROM unlocks WHERE item = ?"),
 };
+
+// ---------- uploaded cosmetics ----------
+
+/** Rebuilds the uploaded part of `cosmetics` from the database. */
+export function reloadCustomCosmetics(): void {
+    const rows = st.customAll.all() as Record<string, string | null>[];
+    const custom: Cosmetic[] = rows.map((r) => ({
+        id: r.id!,
+        part: r.part as CosmeticPart,
+        set: cosmeticSets.some((x) => x.key === r.set_key) ? r.set_key! : CUSTOM_SET,
+        names: JSON.parse(r.names!),
+        ...(r.behavior ? { behavior: r.behavior as Cosmetic["behavior"] } : {}),
+        unlock: JSON.parse(r.unlock!),
+        custom: true,
+    }));
+    cosmetics.splice(0, cosmetics.length, ...catalog.items, ...custom);
+    versions.clear();
+}
+
+/** Saves an uploaded item (new or changed). Pictures are written separately with storeCustomCosmeticImage(). */
+export function saveCustomCosmetic(item: Cosmetic): void {
+    st.customSave.run(item.id, item.part, item.set, JSON.stringify(item.names), item.behavior ?? null, JSON.stringify(item.unlock));
+    reloadCustomCosmetics();
+}
+
+/** Writes the sheet and its still icon; the old files of the item go (the part may have changed). */
+export function storeCustomCosmeticImage(item: Cosmetic, sheet: Buffer, icon: Buffer): void {
+    fs.mkdirSync(CUSTOM_COSMETICS_DIR, { recursive: true });
+    for (const f of fs.readdirSync(CUSTOM_COSMETICS_DIR)) if (f.endsWith(`-${item.id}.png`)) fs.rmSync(path.join(CUSTOM_COSMETICS_DIR, f));
+    fs.writeFileSync(path.join(CUSTOM_COSMETICS_DIR, cosmeticFile(item)), sheet);
+    fs.writeFileSync(path.join(CUSTOM_COSMETICS_DIR, `icon-${cosmeticFile(item)}`), icon);
+    versions.clear();
+}
+
+/** Moves the pictures when the part of an item changes (the part is in the file name). */
+export function renameCustomCosmeticFiles(before: Cosmetic, after: Cosmetic): void {
+    if (before.part === after.part) return;
+    for (const prefix of ["", "icon-"]) {
+        const from = path.join(CUSTOM_COSMETICS_DIR, prefix + cosmeticFile(before));
+        if (fs.existsSync(from)) fs.renameSync(from, path.join(CUSTOM_COSMETICS_DIR, prefix + cosmeticFile(after)));
+    }
+    versions.clear();
+}
+
+/** Deletes an uploaded item with its pictures and everything handed out of it. */
+export function deleteCustomCosmetic(item: Cosmetic): void {
+    st.customDelete.run(item.id);
+    st.unlocksDelete.run(item.id);
+    for (const prefix of ["", "icon-"]) fs.rmSync(path.join(CUSTOM_COSMETICS_DIR, prefix + cosmeticFile(item)), { force: true });
+    reloadCustomCosmetics();
+}
+
+/** New id for an uploaded item; "custom-" keeps it apart from the bundled ones and marks where its files are. */
+export function newCustomCosmeticId(): string {
+    return `custom-${crypto.randomBytes(6).toString("hex")}`;
+}
+
+reloadCustomCosmetics();
 
 /** Today as "YYYY-MM-DD" in the configured time zone. */
 export function today(now = new Date()): string {
@@ -205,7 +291,7 @@ export function unlockShort(item: Cosmetic, lang: Lang): string {
         return `${fmt(u.season.from)}–${fmt(u.season.to)}`;
     }
     if (u.tags) return u.tags.map((t) => roleStyle(t, lang).label).join(", ");
-    return "Event";
+    return de ? "Von Admins" : "By admins";
 }
 
 /** How to get an item, for the profile page. */
@@ -221,5 +307,5 @@ export function unlockHint(item: Cosmetic, lang: Lang): string {
             ? `Zwischen ${fmt(u.season.from)} und ${fmt(u.season.to)} online sein, dann bleibt es dir`
             : `Be online between ${fmt(u.season.from)} and ${fmt(u.season.to)} and keep it`;
     }
-    return de ? "Gibt es bei Events" : "Handed out at events";
+    return de ? "Wird von Admins vergeben, z. B. bei Events" : "Handed out by admins, e.g. at events";
 }
