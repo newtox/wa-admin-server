@@ -21,12 +21,12 @@ WorkAdventure without an admin API keeps the chosen woka only in the browser and
   - **For everyone:** gamer hoodie, arcade shirt, trophy, medal, party hat, and a dragon and a frog as companions.
   - Admins can also hand out any item, to one member or to everyone who was online on a given day (e.g. an event evening), and take it back.
 
-  The admin page lists who has each item and why (everyone, role, season, given by an admin). Given and earned items are stored in the database. Admins get everything, to try it on. Players see what they have and how to get the rest in the profile tab. Needs `PUBLIC_URL`; images are served under `/files/cosmetics/`.
+  The admin page lists who has each item and why (everyone, role, season, given by an admin). Given and earned items are stored in the database. Admins get nothing automatically: only what their roles unlock or what they are given. Players see what they have and how to get the rest in the profile tab. Needs `PUBLIC_URL`; images are served under `/files/cosmetics/`.
   Admins also upload their own items there: complete characters, builder parts (body, eyes, hair, clothes, hat, accessory) and companions, each with German and English names, a group and an unlock rule. New items start as "only for certain people", handed out on the item's page. Pictures are kept in `DATA_DIR/cosmetics`. Avatars uploaded with older versions (table `custom_wokas`, `DATA_DIR/wokas`) are moved there on start: "everyone" and roles stay, people they were shared with get them handed out.
 - **More official wokas:** the ~270 Pipoya characters that WorkAdventure ships but does not offer by default, as extra collections (men, women, school, animals).
 - **Invites:** registration links created through the authentik API, from the admin UI or (admins only) in the game.
 - Member and tag search, player reports, and chat upload limits for the uploader.
-- **German and English** for everything players see (visit cards, profile tab, ban and access messages): the game language WorkAdventure sends wins, otherwise the browser language. The admin UI has both languages too, with a switch in the sidebar.
+- **German and English** for everything players see (visit cards, profile tab, ban and access messages): they follow the browser language, which WorkAdventure forwards. The admin UI has both languages too, with a switch in the sidebar.
 
 No runtime dependencies: Node.js 22 with the built-in `node:sqlite`.
 

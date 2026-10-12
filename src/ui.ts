@@ -795,10 +795,13 @@ ${
 <div>
 ${item.custom ? cosmeticEditForm(c, item) : ""}
 <div class="card"><h2>${a.grantTitle}</h2>
-<form method="post" action="/cosmetics/${encodeURIComponent(item.id)}/grant">${csrfInput(s)}
-<div class="field"><label for="member">${a.grantUser}</label><select id="member" name="member"><option value="">${a.pickMember}</option>${memberOptions}</select></div>
-<div class="field"><label for="day">${a.grantDay}</label><input id="day" name="day" type="date"></div>
-<button type="submit">${icon("unlock")}${a.grant}</button></form></div>
+<form method="post" id="grant-member" action="/cosmetics/${encodeURIComponent(item.id)}/grant">${csrfInput(s)}
+<div class="field"><label for="member">${a.grantUser}</label><select id="member" name="member" required><option value="">${a.pickMember}</option>${memberOptions}</select></div>
+<button type="submit">${icon("unlock")}${a.grantMemberButton}</button></form></div>
+<div class="card"><h2>${a.grantDayTitle}</h2><p class="hint">${a.grantDayHint}</p>
+<form method="post" id="grant-day" action="/cosmetics/${encodeURIComponent(item.id)}/grant">${csrfInput(s)}
+<div class="field"><label for="day">${a.grantDayLabel}</label><input id="day" name="day" type="date" required></div>
+<button type="submit" class="secondary">${icon("unlock")}${a.grantDayButton}</button></form></div>
 <div class="list owners"><div class="list-head"><span>${a.owners} · ${esc(a.ownersCount(owners.length))}</span><span></span></div>
 ${ownerRows || `<div class="empty">${icon("cosmetics")}<span>${a.ownersNone}</span></div>`}</div>
 ${

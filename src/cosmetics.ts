@@ -2,7 +2,7 @@
 //
 // Each item has one unlock rule:
 //   everyone              – available to all
-//   tags                  – players with one of these roles (admins get everything anyway)
+//   tags                  – players with one of these roles (admins get nothing automatically, only through their roles)
 //   season {from, to}     – selectable by everyone in that time of year ("MM-DD"); whoever is online then keeps it
 //   manual                – handed out by an admin, e.g. for an event
 // Admins can also hand out any other item. Earned and given items are stored in the "unlocks" table,
@@ -234,7 +234,6 @@ export function inSeason(season: { from: string; to: string }, day = today()): b
     return season.from <= season.to ? md >= season.from && md <= season.to : md >= season.from || md <= season.to;
 }
 
-const isAdminViewer = (v: CosmeticViewer) => v.tags.includes(config.adminTag);
 
 function earned(identifier: string): Set<string> {
     if (!identifier) return new Set();
@@ -245,7 +244,6 @@ function earned(identifier: string): Set<string> {
 export function hasCosmetic(viewer: CosmeticViewer, item: Cosmetic, own = earned(viewer.identifier)): boolean {
     const u = item.unlock;
     if (u.everyone) return true;
-    if (isAdminViewer(viewer)) return true;
     if (u.tags?.some((t) => viewer.tags.includes(t))) return true;
     if (u.season && inSeason(u.season)) return true;
     return own.has(item.id);
@@ -301,7 +299,7 @@ export function cosmeticHolders(item: Cosmetic, members: CosmeticViewer[]): { id
         const u = item.unlock;
         let reason: HolderReason | undefined;
         if (u.everyone) reason = "everyone";
-        else if (isAdminViewer(m) || u.tags?.some((t) => m.tags.includes(t))) reason = "role";
+        else if (u.tags?.some((t) => m.tags.includes(t))) reason = "role";
         else if (own) reason = own.source === "season" ? "season" : "manual";
         else if (u.season && inSeason(u.season)) reason = "season";
         if (reason) out.push({ identifier: m.identifier, reason, stored: !!own, since: own?.createdAt });
