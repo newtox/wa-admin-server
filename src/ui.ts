@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
-import { bans, customWokas, listCustomWokas, listReports, listUsers, reports, rooms, users, type Access, type CustomWoka, type RoomSettings } from "./db.js";
+import { bans, listReports, listUsers, reports, rooms, users, type Access, type RoomSettings } from "./db.js";
 import { changeRoomStyle, createPersonalRoom, isAdmin, mayCreatePersonalRoom, personalRoomsEnabled, roomMapExists, roomStyles, type RoomStyle } from "./access.js";
 import { deleteMap, listRooms } from "./mapStorage.js";
 import { HttpError, sendJson } from "./http.js";
@@ -26,9 +26,7 @@ import {
 } from "./cosmetics.js";
 import { cosmeticIconPng } from "./cosmeticIcon.js";
 
-const WOKA_DIR = path.join(config.dataDir, "wokas");
 const OG_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "og-image.png");
-fs.mkdirSync(WOKA_DIR, { recursive: true });
 
 const SECRET = createHmac("sha256", config.apiToken).update("admin-ui-session").digest();
 const SESSION_COOKIE = "wa_admin";
@@ -120,12 +118,6 @@ function checkWokaPng(data: Buffer, a: AdminTexts): void {
     if (width !== 96 || height !== 128) {
         throw new HttpError(400, a.wrongSize(width, height));
     }
-}
-
-function storeImage(id: string, data: Buffer): string {
-    fs.writeFileSync(path.join(WOKA_DIR, `${id}.png`), data);
-    const version = createHash("sha256").update(data).digest("hex").slice(0, 8);
-    return `${config.publicUrl}/files/wokas/${id}.png?v=${version}`;
 }
 
 // ---------- session ----------
@@ -368,7 +360,7 @@ function langSwitch(c: Ctx): string {
         .join("")}</span></div>`;
 }
 
-const NAV = ["wokas", "cosmetics", "rooms", "members", "invites", "reports"] as const;
+const NAV = ["cosmetics", "rooms", "members", "invites", "reports"] as const;
 
 function layout(c: Ctx, title: string, active: string, body: string): string {
     const s = c.s;
@@ -417,12 +409,6 @@ function fmtDate(iso: string | null | undefined, a: AdminTexts): string {
 function roleChip(tag: string, lang: Lang): string {
     const st = roleStyle(tag, lang);
     return `<span class="chip"><span class="dot" style="background:${st.color}"></span>${esc(st.label)}</span>`;
-}
-
-function accessSummary(w: CustomWoka, c: Ctx): string {
-    if (w.access.everyone) return `<span class="chip">${c.a.everyone}</span>`;
-    const parts = [...(w.access.tags ?? []).map((tag) => roleChip(tag, c.lang)), ...(w.access.users ?? []).map((u) => `<span class="chip">👤 ${esc(nameOf(u))}</span>`)];
-    return parts.length ? parts.join("") : `<span class="chip">${c.a.nobody}</span>`;
 }
 
 function nameOf(identifier: string): string {
@@ -480,80 +466,6 @@ function accessText(access: Access, c: Ctx, owner?: string | null): string {
 const csrfInput = (s: Session) => `<input type="hidden" name="csrf" value="${esc(csrfFor(s))}">`;
 
 // ---------- pages ----------
-
-function wokasPage(c: Ctx, message?: string): string {
-    const s = c.s!;
-    const a = c.a;
-    const wokas = listCustomWokas();
-    const cards = wokas.length
-        ? `<div class="grid">${wokas
-              .map(
-                  (w) => `<a class="card woka" href="/wokas/${encodeURIComponent(w.id)}"><span class="stage"><span class="sprite" style="background-image:url('${esc(w.url)}')"></span></span>
-<div><h3>${esc(w.name)}</h3><div class="part">${esc(a.parts[w.part] ?? w.part)}</div></div><div class="chips">${accessSummary(w, c)}</div></a>`,
-              )
-              .join("")}</div>`
-        : `<div class="card empty">${icon("wokas")}<span>${a.wokasNone}</span></div>`;
-    const partOptions = WOKA_PARTS.map((p) => `<option value="${p}">${esc(a.parts[p] ?? p)}</option>`).join("");
-    return layout(c, a.wokasTitle, "wokas", `${flash(message)}
-${pageHead(a.wokasTitle, a.wokasCount(wokas.length), a.wokasSub)}
-<div class="card"><h2>${a.uploadTitle}</h2>
-<form id="upload">${csrfInput(s)}<div class="upload-grid">
-<div><label for="file" class="drop" id="drop">${icon("upload")}<strong>${a.dropHint}</strong><span class="small">${a.dropSize}</span><input id="file" type="file" accept="image/png" hidden></label>
-<div id="preview" class="dirs" style="margin-top:12px"></div></div>
-<div><div class="field"><label for="name">${a.name}</label><input id="name" type="text" maxlength="40" required></div>
-<div class="field"><label for="part">${a.type}</label><select id="part">${partOptions}</select></div>
-<div id="error" class="msg err" style="display:none"></div>
-<button type="submit">${icon("upload")}${a.upload}</button></div>
-</div></form></div>
-${cards}
-<script>
-const csrf=${JSON.stringify(csrfFor(s))},T=${JSON.stringify({ chooseFirst: a.chooseFirst, failed: a.uploadFailed })};
-const file=document.getElementById("file"),drop=document.getElementById("drop"),preview=document.getElementById("preview"),err=document.getElementById("error");
-let chosen=null;
-function show(f){chosen=f;const url=URL.createObjectURL(f);preview.innerHTML=[0,1,2,3].map(()=>'<div class="sprite big" style="background-image:url('+url+')"></div>').join("");
- const n=document.getElementById("name");if(!n.value)n.value=f.name.replace(/\\.png$/i,"");}
-file.addEventListener("change",()=>file.files[0]&&show(file.files[0]));
-["dragenter","dragover"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add("over")}));
-["dragleave","drop"].forEach(t=>drop.addEventListener(t,()=>drop.classList.remove("over")));
-drop.addEventListener("drop",e=>{e.preventDefault();e.dataTransfer.files[0]&&show(e.dataTransfer.files[0])});
-document.getElementById("upload").addEventListener("submit",async e=>{e.preventDefault();err.style.display="none";
- if(!chosen){err.textContent=T.chooseFirst;err.style.display="flex";return}
- const r=await fetch("/wokas",{method:"POST",body:chosen,headers:{"Content-Type":"image/png","X-CSRF":csrf,"X-Woka-Name":encodeURIComponent(document.getElementById("name").value),"X-Woka-Part":document.getElementById("part").value}});
- const d=await r.json().catch(()=>({}));if(!r.ok){err.textContent=d.error||T.failed;err.style.display="flex";return}
- location.href="/wokas/"+encodeURIComponent(d.id)+"?neu=1";});
-</script>`);
-}
-
-function wokaEditPage(c: Ctx, w: CustomWoka, message?: string): string {
-    const s = c.s!;
-    const a = c.a;
-    const text = t(c.lang);
-    const partOptions = WOKA_PARTS.map((p) => `<option value="${p}"${p === w.part ? " selected" : ""}>${esc(a.parts[p] ?? p)}</option>`).join("");
-    return layout(c, w.name, "wokas", `${flash(message)}
-<a class="crumb" href="/wokas">${icon("back")}${a.allAvatars}</a>
-${pageHead(w.name, a.parts[w.part] ?? w.part)}
-<div class="split">
-<div class="sticky"><div class="card"><h2>${a.preview}</h2><div class="dirs preview">${[0, 1, 2, 3].map(() => `<div class="sprite big" style="background-image:url('${esc(w.url)}')"></div>`).join("")}</div></div>
-<div class="card"><h2>${a.replaceImage}</h2><input id="file" type="file" accept="image/png"><div id="error" class="msg err" style="display:none;margin-top:12px"></div>
-<button id="replace" class="secondary" type="button" style="margin-top:12px">${icon("upload")}${a.uploadNewImage}</button></div></div>
-<div>
-<form method="post" action="/wokas/${encodeURIComponent(w.id)}" class="card">${csrfInput(s)}
-<div class="field"><label for="name">${a.name}</label><input id="name" name="name" type="text" maxlength="40" value="${esc(w.name)}" required></div>
-<div class="field"><label for="part">${a.type}</label><select id="part" name="part">${partOptions}</select></div>
-<h2 style="margin-top:22px">${a.whoMayUse}</h2>
-${accessFields(w.access, { everyoneLabel: text.everyone, lang: c.lang })}
-<div style="margin-top:16px"><button type="submit">${a.save}</button></div>
-</form>
-<form method="post" action="/wokas/${encodeURIComponent(w.id)}/delete" class="card danger" onsubmit="return confirm(${esc(JSON.stringify(a.confirmDeleteAvatar))})">${csrfInput(s)}
-<h2>${a.deleteAvatar}</h2><p class="hint">${a.deleteAvatarHint}</p><button class="danger" type="submit">${icon("trash")}${a.deleteAvatar}</button></form>
-</div></div>
-<script>
-document.getElementById("replace").addEventListener("click",async()=>{const f=document.getElementById("file").files[0],err=document.getElementById("error");
- if(!f){err.textContent=${JSON.stringify(a.chooseFirst)};err.style.display="flex";return}
- const r=await fetch(location.pathname+"/image",{method:"POST",body:f,headers:{"Content-Type":"image/png","X-CSRF":${JSON.stringify(csrfFor(s))}}});
- const d=await r.json().catch(()=>({}));if(!r.ok){err.textContent=d.error||${JSON.stringify(a.uploadFailed)};err.style.display="flex";return}location.reload();});
-</script>`);
-}
 
 async function roomsPage(c: Ctx, message?: string): Promise<string> {
     const a = c.a;
@@ -719,14 +631,21 @@ function cosmeticsPage(c: Ctx, message?: string): string {
         .map((set) => {
             const items = cosmetics.filter((i) => i.set === set.key);
             if (!items.length) return "";
-            return `<h2 class="section-title" style="margin-top:8px">${esc(set.names[c.lang])}</h2><div class="grid" style="margin-bottom:22px">${items
+            return `<section class="cosset"><h2 class="section-title" style="margin-top:8px">${esc(set.names[c.lang])}</h2><div class="grid" style="margin-bottom:22px">${items
                 .map(
-                    (item) => `<a class="card woka" href="/cosmetics/${encodeURIComponent(item.id)}"><span class="stage">${cosmeticIcon(item)}</span>
+                    (item) => `<a class="card woka" data-part="${item.part}" href="/cosmetics/${encodeURIComponent(item.id)}"><span class="stage">${cosmeticIcon(item)}</span>
 <div><h3>${esc(item.names[c.lang])}</h3><div class="part">${esc(partName(item.part, a))} · ${esc(a.ownersCount(cosmeticHolders(item, members()).length))}</div></div><div class="chips">${ruleChip(item, c)}</div></a>`,
                 )
-                .join("")}</div>`;
+                .join("")}</div></section>`;
         })
         .join("");
+    // filter by type, e.g. only complete characters or only companions
+    const present = CUSTOM_PARTS.filter((part) => cosmetics.some((i) => i.part === part));
+    const filter = `<div class="checks" id="partfilter" role="group"><label><input type="radio" name="pf" value="" checked> ${esc(a.allTypes)}</label>${present
+        .map((part) => `<label><input type="radio" name="pf" value="${part}"> ${esc(partName(part, a))}</label>`)
+        .join("")}</div>
+<script>document.getElementById("partfilter").addEventListener("change",e=>{const v=e.target.value;
+document.querySelectorAll(".cosset").forEach(sec=>{let any=false;sec.querySelectorAll("[data-part]").forEach(el=>{const on=!v||el.dataset.part===v;el.style.display=on?"":"none";any=any||on});sec.style.display=any?"":"none"})});</script>`;
     const partOptions = CUSTOM_PARTS.map((p) => `<option value="${p}">${esc(partName(p, a))}</option>`).join("");
     return layout(c, a.cosmeticsTitle, "cosmetics", `${flash(message)}
 ${pageHead(a.cosmeticsTitle, a.cosmeticsCount(cosmetics.length), a.cosmeticsSub)}
@@ -739,6 +658,7 @@ ${pageHead(a.cosmeticsTitle, a.cosmeticsCount(cosmetics.length), a.cosmeticsSub)
 <div id="error" class="msg err" style="display:none"></div>
 <button type="submit">${icon("upload")}${a.upload}</button></div>
 </div></form></div>
+${filter}
 ${sets}
 <script>
 const csrf=${JSON.stringify(csrfFor(s))},T=${JSON.stringify({ chooseFirst: a.chooseFirst, failed: a.uploadFailed })};
@@ -788,11 +708,12 @@ function cosmeticEditForm(c: Ctx, item: Cosmetic): string {
 <div class="field" id="behavior-field"><label for="behavior">${a.behavior}</label><select id="behavior" name="behavior">${BEHAVIORS.map((b) => opt(b, a.behaviors[b] ?? b, b === (item.behavior ?? "dog"))).join("")}</select></div>
 <div class="field"><label for="set">${a.set}</label><select id="set" name="set">${cosmeticSets.map((x) => opt(x.key, x.names[c.lang], x.key === item.set)).join("")}</select></div>
 <label>${a.rule}</label><div class="checks">${radio("everyone", a.ruleEveryone)}${radio("tags", a.ruleTags)}${radio("season", a.ruleSeason)}${radio("manual", a.ruleManual)}</div>
+<p class="hint" id="rule-manual">${a.ruleManualHint}</p>
 <div id="rule-tags"><label>${a.ruleTags}</label><div class="checks">${tagChecks}</div></div>
 <div id="rule-season" class="field"><label>${a.ruleSeason}</label><div style="display:flex;gap:10px;align-items:center"><span>${a.seasonFrom}</span><input type="date" name="from" value="${esc(date(u.season?.from))}"><span>${a.seasonTo}</span><input type="date" name="to" value="${esc(date(u.season?.to))}"></div><p class="hint">${a.seasonHint}</p></div>
 <div style="margin-top:16px"><button type="submit">${a.save}</button></div></form>
 <script>(()=>{const f=document.getElementById("cosedit"),show=()=>{const r=(f.querySelector("input[name=rule]:checked")||{}).value;
-document.getElementById("rule-tags").style.display=r==="tags"?"":"none";document.getElementById("rule-season").style.display=r==="season"?"":"none";
+document.getElementById("rule-tags").style.display=r==="tags"?"":"none";document.getElementById("rule-manual").style.display=r==="manual"?"":"none";document.getElementById("rule-season").style.display=r==="season"?"":"none";
 document.getElementById("behavior-field").style.display=f.part.value==="companion"?"":"none"};f.addEventListener("change",show);show()})();</script>`;
 }
 
@@ -896,7 +817,8 @@ function cosmeticsSection(viewer: { identifier: string; tags: string[] }, lang: 
     const have = new Set(cosmeticsFor(viewer).map((i) => i.id));
     const sets = cosmeticSets
         .map((set) => {
-            const items = cosmetics.filter((i) => i.set === set.key);
+            // items only handed out by admins (e.g. someone's own avatar) are only shown to who has them
+            const items = cosmetics.filter((i) => i.set === set.key && (!i.unlock.manual || have.has(i.id)));
             if (!items.length) return "";
             return `<h3>${esc(set.names[lang])}</h3><div class="cosgrid">${items
                 .map((item) => {
@@ -906,7 +828,7 @@ function cosmeticsSection(viewer: { identifier: string; tags: string[] }, lang: 
                 .join("")}</div>`;
         })
         .join("");
-    return `<h2>${text.cosmeticsTitle}</h2><p class="hint">${esc(text.cosmeticsProgress(have.size, cosmetics.length))}. ${text.cosmeticsHint}</p>${sets}`;
+    return `<h2>${text.cosmeticsTitle}</h2><p class="hint">${esc(text.cosmeticsProgress(have.size, cosmetics.filter((i) => !i.unlock.manual || have.has(i.id)).length))}. ${text.cosmeticsHint}</p>${sets}`;
 }
 
 function wokaDetails(identifier: string, tags: string[], ids: string[]): string[] {
@@ -1176,12 +1098,11 @@ async function finishLogin(req: IncomingMessage, res: ServerResponse, query: URL
     }
     users.saveProfile(sub, identity);
     const session: Session = { sub, name: identity.username ?? identity.name ?? sub, tags: identity.tags, exp: Date.now() + SESSION_HOURS * 3600_000 };
-    redirect(res, "/wokas", [clearFlow, cookie(SESSION_COOKIE, sign(session), SESSION_HOURS * 3600)]);
+    redirect(res, "/cosmetics", [clearFlow, cookie(SESSION_COOKIE, sign(session), SESSION_HOURS * 3600)]);
 }
 
 // ---------- router ----------
 
-const WOKA_ID = /^custom-[a-z0-9]{12}$/;
 const LANG_COOKIE = "wa_admin_lang";
 
 /** Admin UI language: the switch in the sidebar (cookie) wins, otherwise the browser language. */
@@ -1197,19 +1118,6 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
 
     if (p === "/healthz") return sendJson(res, 200, { ok: true });
 
-    // Woka images are public: browsers load them from inside WorkAdventure.
-    const file = /^\/files\/wokas\/(custom-[a-z0-9]{12})\.png$/.exec(p);
-    if (file && req.method === "GET") {
-        const filePath = path.join(WOKA_DIR, `${file[1]}.png`);
-        if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: "not found" });
-        res.writeHead(200, {
-            "Content-Type": "image/png",
-            "Access-Control-Allow-Origin": "*",
-            "Cache-Control": url.searchParams.has("v") ? "public, max-age=31536000, immutable" : "public, max-age=300",
-            "X-Content-Type-Options": "nosniff",
-        });
-        return void fs.createReadStream(filePath).pipe(res);
-    }
 
     // Extra woka parts (hair and eye colours), loaded by WorkAdventure from other origins.
     const partFile = /^\/files\/parts\/([a-z0-9-]+\.png)$/.exec(p);
@@ -1375,8 +1283,9 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
     }
     const s = ctx.s;
 
-    if (req.method === "GET" && (p === "/" || p === "")) return redirect(res, "/wokas");
-    if (req.method === "GET" && p === "/wokas") return html(res, 200, wokasPage(ctx));
+    if (req.method === "GET" && (p === "/" || p === "")) return redirect(res, "/cosmetics");
+    // Avatars are cosmetics now; old links lead there.
+    if (req.method === "GET" && (p === "/wokas" || p.startsWith("/wokas/"))) return redirect(res, "/cosmetics");
     if (req.method === "GET" && p === "/members") return html(res, 200, membersPage(ctx));
     if (req.method === "GET" && p === "/rooms") return html(res, 200, await roomsPage(ctx));
     if (p === "/rooms/edit" || p === "/rooms/delete") {
@@ -1557,21 +1466,6 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
         }
     }
 
-    if (req.method === "POST" && p === "/wokas") {
-        checkCsrf(s, req.headers["x-csrf"] as string | undefined, a);
-        const name = decodeURIComponent(String(req.headers["x-woka-name"] ?? "")).trim().slice(0, 40);
-        const part = String(req.headers["x-woka-part"] ?? "woka");
-        if (!name) throw new HttpError(400, a.nameMissing);
-        if (!(WOKA_PARTS as readonly string[]).includes(part)) throw new HttpError(400, a.unknownType);
-        const data = await readBody(req, 512 * 1024, a.tooBig);
-        checkWokaPng(data, a);
-        const id = `custom-${randomBytes(8).toString("hex").slice(0, 12)}`;
-        // New avatars are only visible to the uploader until access is set.
-        customWokas.add({ id, part, name, url: storeImage(id, data), access: { users: [s.sub] }, position: 0 });
-        console.info(`woka ${id} uploaded by ${s.sub}`);
-        return sendJson(res, 201, { id });
-    }
-
     if (req.method === "POST" && p === "/reports/delete") {
         checkCsrf(s, (await readForm(req)).get("csrf"), a);
         reports.removeAll();
@@ -1582,48 +1476,6 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
         checkCsrf(s, (await readForm(req)).get("csrf"), a);
         reports.remove(Number(report[1]));
         return html(res, 200, reportsPage({ ...ctx, path: "/reports" }, a.reportDeleted));
-    }
-
-    const woka = /^\/wokas\/([^/]+)(\/image|\/delete)?$/.exec(p);
-    if (woka && WOKA_ID.test(woka[1]!)) {
-        const current = customWokas.get(woka[1]!);
-        if (!current) return html(res, 404, layout(ctx, a.notFound, "wokas", `${pageHead(a.notFound)}<div class="card empty">${icon("wokas")}<span>${a.avatarGone}</span></div>`));
-
-        if (req.method === "GET" && !woka[2]) {
-            return html(res, 200, wokaEditPage(ctx, current, url.searchParams.has("neu") ? a.uploaded : undefined));
-        }
-        if (req.method === "POST" && woka[2] === "/image") {
-            checkCsrf(s, req.headers["x-csrf"] as string | undefined, a);
-            const data = await readBody(req, 512 * 1024, a.tooBig);
-            checkWokaPng(data, a);
-            customWokas.update({ ...current, url: storeImage(current.id, data) });
-            return sendJson(res, 200, { id: current.id });
-        }
-        if (req.method === "POST" && woka[2] === "/delete") {
-            const form = await readForm(req);
-            checkCsrf(s, form.get("csrf"), a);
-            customWokas.remove(current.id);
-            fs.rmSync(path.join(WOKA_DIR, `${current.id}.png`), { force: true });
-            return html(res, 200, wokasPage({ ...ctx, path: "/wokas" }, a.avatarDeleted(current.name)));
-        }
-        if (req.method === "POST" && !woka[2]) {
-            const form = await readForm(req);
-            checkCsrf(s, form.get("csrf"), a);
-            const part = form.get("part") ?? current.part;
-            const extra = (form.get("more") ?? "").split(/[\s,;]+/).map((v) => v.trim()).filter((v) => v.includes("@"));
-            const updated: CustomWoka = {
-                ...current,
-                name: (form.get("name") ?? current.name).trim().slice(0, 40) || current.name,
-                part: (WOKA_PARTS as readonly string[]).includes(part) ? part : current.part,
-                access: {
-                    everyone: form.get("everyone") === "1",
-                    tags: form.getAll("tags").filter((tag) => tag !== ""),
-                    users: [...new Set([...form.getAll("users"), ...extra])],
-                },
-            };
-            customWokas.update(updated);
-            return html(res, 200, wokaEditPage(ctx, updated, a.saved));
-        }
     }
 
     return html(res, 404, layout(ctx, a.notFound, "", `${pageHead(a.notFound)}<div class="card empty">${icon("home")}<span>${a.pageNotFound}</span><a class="btn secondary" href="/">WorkAdventure Admin</a></div>`));

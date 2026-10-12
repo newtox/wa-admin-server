@@ -12,11 +12,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
-import { db } from "./db.js";
+import { customWokas, db, listCustomWokas, listUsers, users } from "./db.js";
+import { cosmeticIconPng } from "./cosmeticIcon.js";
 import type { Lang } from "./i18n.js";
 import { roleStyle } from "./cards.js";
 
-export type CosmeticPart = "clothes" | "hat" | "accessory" | "eyes" | "companion";
+export type CosmeticPart = "woka" | "body" | "eyes" | "hair" | "clothes" | "hat" | "accessory" | "companion";
 
 export interface Unlock {
     everyone?: boolean;
@@ -55,7 +56,8 @@ export const CUSTOM_SET = "custom";
 export const cosmeticSets: CosmeticSet[] = [...catalog.sets, { key: CUSTOM_SET, names: { de: "Eigene", en: "Custom" } }];
 /** Bundled items followed by the uploaded ones; kept up to date in place by reloadCustomCosmetics(). */
 export const cosmetics: Cosmetic[] = [...catalog.items];
-export const CUSTOM_PARTS = ["clothes", "hat", "accessory", "eyes", "companion"] as const;
+/** Everything that can be uploaded: complete characters, the builder's parts and companions. */
+export const CUSTOM_PARTS = ["woka", "body", "eyes", "hair", "clothes", "hat", "accessory", "companion"] as const;
 export const BEHAVIORS = ["dog", "cat", "red_panda"] as const;
 
 /** File of an item: "hat-crown.png", "companion-bat.png", … */
@@ -184,6 +186,37 @@ export function newCustomCosmeticId(): string {
     return `custom-${crypto.randomBytes(6).toString("hex")}`;
 }
 
+/**
+ * Avatars used to be uploaded on a page of their own (table custom_wokas, pictures in DATA_DIR/wokas). They are
+ * cosmetics now: each becomes an uploaded item with the same id, "for everyone" or "for roles" stays as it was,
+ * and people it was shared with get it handed out. Saved avatars of players are renamed to the new texture ids.
+ */
+function migrateCustomWokas(): void {
+    const old = listCustomWokas();
+    if (!old.length) return;
+    const wokaDir = path.join(config.dataDir, "wokas");
+    for (const w of old) {
+        try {
+            const sheet = fs.readFileSync(path.join(wokaDir, `${w.id}.png`));
+            const unlock: Unlock = w.access.everyone ? { everyone: true } : w.access.tags?.length ? { tags: w.access.tags } : { manual: true };
+            const part = ((CUSTOM_PARTS as readonly string[]).includes(w.part) ? w.part : "woka") as CosmeticPart;
+            const item: Cosmetic = { id: w.id, part, set: CUSTOM_SET, names: { de: w.name, en: w.name }, unlock, custom: true };
+            storeCustomCosmeticImage(item, sheet, cosmeticIconPng(sheet));
+            st.customSave.run(item.id, item.part, item.set, JSON.stringify(item.names), null, JSON.stringify(item.unlock));
+            for (const person of w.access.users ?? []) st.grant.run(person, item.id, "manual");
+            for (const u of listUsers()) {
+                if (u.textures?.includes(w.id)) users.setTextures(u.identifier, u.textures.map((t) => (t === w.id ? `cosmetic-${w.id}` : t)));
+            }
+            customWokas.remove(w.id);
+            fs.rmSync(path.join(wokaDir, `${w.id}.png`), { force: true });
+            console.info(`avatar ${w.id} ("${w.name}") moved to the cosmetics`);
+        } catch (err) {
+            console.error(`avatar ${w.id} could not be moved to the cosmetics:`, err);
+        }
+    }
+}
+
+migrateCustomWokas();
 reloadCustomCosmetics();
 
 /** Today as "YYYY-MM-DD" in the configured time zone. */
@@ -291,7 +324,7 @@ export function unlockShort(item: Cosmetic, lang: Lang): string {
         return `${fmt(u.season.from)}–${fmt(u.season.to)}`;
     }
     if (u.tags) return u.tags.map((t) => roleStyle(t, lang).label).join(", ");
-    return de ? "Von Admins" : "By admins";
+    return de ? "Bestimmte Personen" : "Certain people";
 }
 
 /** How to get an item, for the profile page. */
@@ -307,5 +340,5 @@ export function unlockHint(item: Cosmetic, lang: Lang): string {
             ? `Zwischen ${fmt(u.season.from)} und ${fmt(u.season.to)} online sein, dann bleibt es dir`
             : `Be online between ${fmt(u.season.from)} and ${fmt(u.season.to)} and keep it`;
     }
-    return de ? "Wird von Admins vergeben, z. B. bei Events" : "Handed out by admins, e.g. at events";
+    return de ? "Bekommt nur, wem ein Admin es gibt" : "Only for people an admin gives it to";
 }

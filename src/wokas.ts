@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listCustomWokas, type CustomWoka } from "./db.js";
 import { config } from "./config.js";
 import { cosmeticSets, cosmeticTextureId, cosmeticUrl, cosmeticsFor, hasCosmetic, cosmetics, type Cosmetic, type CosmeticViewer } from "./cosmetics.js";
 
@@ -37,9 +36,6 @@ export interface Viewer {
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data");
 const official: WokaList = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "woka.json"), "utf8"));
-
-// Official wokas sit in the collection "default"; custom ones get their own, shown first.
-export const CUSTOM_COLLECTION = "custom";
 
 // WorkAdventure ships ~290 Pipoya characters but its default list only offers 24 of them.
 // The others are added as extra collections (files served by WorkAdventure itself).
@@ -91,7 +87,7 @@ function addPipoya(list: WokaList, lang: "de" | "en"): void {
     }
 }
 
-// Unlockable cosmetics (seasonal, roles, trophies): one collection per set, only with what the player has.
+// Cosmetics (seasonal, roles, uploaded avatars and parts): one collection per set, only with what the player has.
 function addCosmetics(list: WokaList, viewer: CosmeticViewer, lang: "de" | "en"): void {
     if (!config.publicUrl) return;
     const own = cosmeticsFor(viewer);
@@ -108,29 +104,12 @@ function addCosmetics(list: WokaList, viewer: CosmeticViewer, lang: "de" | "en")
     });
 }
 
-export function canUse(woka: CustomWoka, viewer: Viewer): boolean {
-    const access = woka.access;
-    if (access.everyone) return true;
-    if (access.users?.some((u) => u.toLowerCase() === viewer.identifier.toLowerCase())) return true;
-    return access.tags?.some((t) => viewer.tags.includes(t)) ?? false;
-}
-
-/** The woka list a given user may choose from: all official wokas plus the custom ones they are allowed to use. */
+/** The woka list a given user may choose from: all official wokas plus the cosmetics they have (uploaded ones included). */
 export function wokaListFor(viewer: Viewer, lang: "de" | "en" = "en"): WokaList {
     const list: WokaList = structuredClone(official);
     addPipoya(list, lang);
     addParts(list, lang);
     addCosmetics(list, viewer, lang);
-    const custom = listCustomWokas().filter((w) => canUse(w, viewer));
-    for (const woka of custom) {
-        const part = (list[woka.part] ??= { collections: [] });
-        let collection = part.collections.find((c) => c.name === CUSTOM_COLLECTION);
-        if (!collection) {
-            collection = { name: CUSTOM_COLLECTION, position: -1, textures: [] };
-            part.collections.unshift(collection);
-        }
-        collection.textures.push({ id: woka.id, name: woka.name, url: woka.url, position: woka.position });
-    }
     return list;
 }
 
