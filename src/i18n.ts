@@ -2,9 +2,9 @@
 export type Lang = "de" | "en";
 
 /**
- * Picks the language from an Accept-Language header. WorkAdventure sends the player's
- * game language this way to the admin API; browsers send their own language for the
- * visit card and profile iframes. Everything that is not German gets English.
+ * Picks the language from an Accept-Language header. For room access (e.g. the ban screen) WorkAdventure
+ * forwards the browser's header, so this is the browser language, not WorkAdventure's own language setting,
+ * which never leaves the browser. Everything that is not German gets English.
  */
 export function langFrom(...candidates: (string | string[] | null | undefined)[]): Lang {
     for (const candidate of candidates) {

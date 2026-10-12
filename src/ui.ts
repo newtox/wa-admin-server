@@ -865,13 +865,20 @@ s();window.addEventListener("load",s);if(window.ResizeObserver)new ResizeObserve
 </body></html>`;
 }
 
+/**
+ * Language for player pages: the browser's language of this request; the one saved at the last room visit
+ * (also the browser's) only when the request names none; English otherwise.
+ */
+function playerLang(browserLang: Lang | undefined, stored: string | null | undefined): Lang {
+    return browserLang ?? (stored === "de" || stored === "en" ? stored : "en");
+}
+
 /** "Profil" tab in the WorkAdventure menu (OPENID_PROFILE_SCREEN_PROVIDER): own visit card and personal room. */
-async function profilePage(accessToken: string | null, browserLang: Lang, message?: (text: ReturnType<typeof t>) => string, invite?: Invite): Promise<string> {
+async function profilePage(accessToken: string | null, browserLang: Lang | undefined, message?: (text: ReturnType<typeof t>) => string, invite?: Invite): Promise<string> {
     const identity = await identityFromAccessToken(accessToken ?? undefined);
     const identifier = identity?.email;
     const user = identifier ? users.get(identifier) : undefined;
-    // The game language of the last room visit wins over the browser language.
-    const lang: Lang = user?.locale === "de" || user?.locale === "en" ? user.locale : browserLang;
+    const lang = playerLang(browserLang, user?.locale);
     const text = t(lang);
     let body: string;
     if (!identity || !identifier) {
@@ -1142,7 +1149,8 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
     }
 
     if (p === "/profile" || p.startsWith("/profile/")) {
-        const browserLang = langFrom(url.searchParams.get("lang"), req.headers["accept-language"]);
+        // undefined when neither ?lang= nor the browser names a language
+        const browserLang = matchLang(url.searchParams.get("lang")) ?? matchLang(req.headers["accept-language"]);
         const sendProfile = async (accessToken: string | null, message?: (text: ReturnType<typeof t>) => string, invite?: Invite) => {
             res.writeHead(200, {
                 "Content-Type": "text/html; charset=utf-8",
@@ -1174,8 +1182,7 @@ export async function handleUi(req: IncomingMessage, res: ServerResponse): Promi
             if (!identity?.email) return sendProfile(accessToken);
             const viewer = { identifier: identity.email, tags: identity.tags };
             if (p === "/profile/room") {
-                const stored = users.get(identity.email)?.locale;
-                const lang: Lang = stored === "de" || stored === "en" ? stored : browserLang;
+                const lang = playerLang(browserLang, users.get(identity.email)?.locale);
                 if (!mayCreatePersonalRoom(viewer)) throw new HttpError(403, t(lang).forbidden);
                 const name = identity.username ?? identity.name ?? identity.email.split("@")[0]!;
                 let room;

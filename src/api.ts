@@ -237,10 +237,11 @@ async function roomAccess(query: URLSearchParams, acceptLanguage: string | undef
     const stored = !anonymous && identifier ? users.get(identifier) : undefined;
     // Notes the day: hands out the items of the running season, and lets admins reward everyone online that day.
     if (stored) recordVisit(stored.identifier);
-    // Remembered so the profile tab can use the game language instead of the browser's.
-    const gameLang = matchLang(acceptLanguage);
-    if (stored && gameLang) {
-        if (stored.locale !== gameLang) users.setLocale(stored.identifier, gameLang);
+    // WorkAdventure forwards the browser's Accept-Language here (its own language setting stays in the browser).
+    // Remembered so pages that WorkAdventure loads without that header still use the player's language.
+    const lang = matchLang(acceptLanguage);
+    if (stored && lang) {
+        if (stored.locale !== lang) users.setLocale(stored.identifier, lang);
     }
 
     // The account's saved woka wins; the browser's choice is used (and saved) when there is none yet.
