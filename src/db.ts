@@ -115,6 +115,14 @@ const statements = {
             tags = excluded.tags,
             last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`),
     setLastSeen: db.prepare("UPDATE users SET last_seen = ? WHERE identifier = ? AND last_seen < ?"),
+    // same without touching last_seen (logging in to the admin UI is not being in the game)
+    upsertProfileQuiet: db.prepare(`
+        INSERT INTO users (identifier, username, name, email, tags) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(identifier) DO UPDATE SET
+            username = COALESCE(excluded.username, users.username),
+            name = COALESCE(excluded.name, users.name),
+            email = COALESCE(excluded.email, users.email),
+            tags = excluded.tags`),
     touch: db.prepare(`
         INSERT INTO users (identifier) VALUES (?)
         ON CONFLICT(identifier) DO UPDATE SET last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`),
@@ -160,8 +168,9 @@ export const users = {
     get(identifier: string): UserRow | undefined {
         return toUser(statements.get.get(identifier) as Record<string, unknown> | undefined);
     },
-    saveProfile(identifier: string, profile: { username?: string | null; name?: string | null; email?: string | null; tags: string[] }) {
-        statements.upsertProfile.run(identifier, profile.username ?? null, profile.name ?? null, profile.email ?? null, JSON.stringify(profile.tags));
+    /** Stores name and roles; `seen` also sets "last seen" to now (only for being in the game). */
+    saveProfile(identifier: string, profile: { username?: string | null; name?: string | null; email?: string | null; tags: string[] }, seen = true) {
+        (seen ? statements.upsertProfile : statements.upsertProfileQuiet).run(identifier, profile.username ?? null, profile.name ?? null, profile.email ?? null, JSON.stringify(profile.tags));
     },
     /** Moves "last seen" forward (never back) to an ISO time like 2026-10-14T00:57:00Z. */
     setLastSeen(identifier: string, iso: string) {

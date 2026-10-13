@@ -1101,7 +1101,7 @@ async function finishLogin(req: IncomingMessage, res: ServerResponse, query: URL
         res.setHeader("Set-Cookie", clearFlow);
         return html(res, 403, messagePage(c, a.noAccessTitle, a.noAccess(config.adminTag)));
     }
-    users.saveProfile(sub, identity);
+    users.saveProfile(sub, identity, false);
     const session: Session = { sub, name: identity.username ?? identity.name ?? sub, tags: identity.tags, exp: Date.now() + SESSION_HOURS * 3600_000 };
     redirect(res, "/cosmetics", [clearFlow, cookie(SESSION_COOKIE, sign(session), SESSION_HOURS * 3600)]);
 }
