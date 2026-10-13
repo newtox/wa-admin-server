@@ -114,6 +114,7 @@ const statements = {
             email = COALESCE(excluded.email, users.email),
             tags = excluded.tags,
             last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`),
+    setLastSeen: db.prepare("UPDATE users SET last_seen = ? WHERE identifier = ? AND last_seen < ?"),
     touch: db.prepare(`
         INSERT INTO users (identifier) VALUES (?)
         ON CONFLICT(identifier) DO UPDATE SET last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`),
@@ -161,6 +162,10 @@ export const users = {
     },
     saveProfile(identifier: string, profile: { username?: string | null; name?: string | null; email?: string | null; tags: string[] }) {
         statements.upsertProfile.run(identifier, profile.username ?? null, profile.name ?? null, profile.email ?? null, JSON.stringify(profile.tags));
+    },
+    /** Moves "last seen" forward (never back) to an ISO time like 2026-10-14T00:57:00Z. */
+    setLastSeen(identifier: string, iso: string) {
+        statements.setLastSeen.run(iso, identifier, iso);
     },
     touch(identifier: string) {
         statements.touch.run(identifier);

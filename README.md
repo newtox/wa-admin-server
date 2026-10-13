@@ -7,7 +7,7 @@ WorkAdventure without an admin API keeps the chosen woka only in the browser and
 - **Roles are live.** On every page load and room change the user's roles are read from the OpenID provider's userinfo endpoint with the user's access token (claim `tags` by default). Group changes apply after a reload, no new login needed. The last known roles are used as a fallback.
 - **Wokas and companions are saved per account**, so they follow the user to every browser and device. A woka chosen in the browser before the admin API existed is taken over on the first visit.
 - **Own avatars and cosmetics**, uploaded in the admin UI (complete characters, builder parts, hats, accessories, companions) and unlocked for everyone, roles, a season or single people.
-- **Admin UI** (login through OpenID Connect, admin role only): avatars & cosmetics, members with their roles and woka, player reports.
+- **Admin UI** (login through OpenID Connect, admin role only): avatars & cosmetics, members with their roles, when they were last online (and who is online now, with the Matrix settings), player reports.
 - **Map editor rights** come from roles (`EDITOR_TAGS`, default `admin,editor`) or a list of users.
 - **Room list** from the map storage, with relative thumbnails (e.g. the `mapImage` of the Tiled map) turned into working URLs.
 - **Room access by role or person**, names and descriptions for the room list, hidden rooms (admin UI → Räume).
@@ -70,6 +70,9 @@ All endpoints except capabilities, logout and the upload check require `Authoriz
 | `UPLOAD_MAX_FILESIZE` | `10485760` | Chat upload limit in bytes |
 | `PERSONAL_ROOM_TEMPLATE` | – | Map copied for personal rooms, e.g. `maps/zimmer.wam`; enables personal rooms. Further styles are found automatically: every `zimmer-stil-<key>.wam` in the same folder (known keys: `loft`, `gemuetlich`, `dunkel`, `gross`; the template itself is `holz`). Players pick a style in their profile and can switch later, which replaces the room's map |
 | `MATRIX_DOMAIN` | – | Same value as WorkAdventure's `MATRIX_DOMAIN`. Enables the Matrix chat (direct messages, chat rooms) and gives members their Matrix id `@<username>:<MATRIX_DOMAIN>`. Synapse must create accounts the same way: `localpart_template: "{{ user.preferred_username | replace(' ', '') }}"` (spaces dropped, so "Graf Cedric" becomes `@grafcedric`) in its OIDC mapping. E-mail addresses are never sent to WorkAdventure's member lists; players are known to each other by an opaque id (`u-…`, derived from the e-mail with `ADMIN_API_TOKEN`), which WorkAdventure shows in meeting participant lists instead of the e-mail |
+| `MATRIX_API_URL` | – | Synapse as seen from this container, e.g. `http://synapse:8008`. Together with the next two, "last seen" on the members page becomes the last activity in the chat (when someone really had WorkAdventure open, read every 2 minutes) and members active in the last 5 minutes are shown as online. Without them it is the last time someone entered a room |
+| `MATRIX_ADMIN_USER` | – | WorkAdventure's Matrix admin user (localpart, same as its `MATRIX_ADMIN_USER`); needs to be a Synapse admin |
+| `MATRIX_ADMIN_PASSWORD` | – | Its password |
 | `PERSONAL_ROOM_DIR` | `zimmer` | Map storage folder for personal rooms. Must not be a folder you upload maps to: an upload deletes every map in its folder that is not part of the upload |
 | `MAP_STORAGE_TOKEN` | – | Map storage API token (`MAP_STORAGE_AUTHENTICATION_TOKEN`), needed to copy the template |
 | `PERSONAL_ROOM_TAGS` | – | Roles that may create a personal room (empty: everyone logged in) |

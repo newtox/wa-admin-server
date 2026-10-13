@@ -64,6 +64,15 @@ export const config = {
      * chat rooms) is enabled and members get their Matrix id, so they can be messaged from the member list.
      */
     matrixDomain: optional("MATRIX_DOMAIN"),
+    /**
+     * Synapse as seen from this container and WorkAdventure's Matrix admin user (MATRIX_ADMIN_USER / _PASSWORD).
+     * With all three, "last seen" in the admin UI is the last activity in the chat, i.e. when someone really
+     * had WorkAdventure open, and members active in the last minutes are shown as online.
+     */
+    matrixApiUrl: optional("MATRIX_API_URL") ? trimSlash(optional("MATRIX_API_URL")!) : undefined,
+    matrixAdminUser: optional("MATRIX_ADMIN_USER"),
+    matrixAdminPassword: optional("MATRIX_ADMIN_PASSWORD"),
+    matrixActivitySeconds: Number(str("MATRIX_ACTIVITY_SECONDS", "120")),
     enableChatUpload: bool("ENABLE_CHAT_UPLOAD", true),
     enableChatOnlineList: bool("ENABLE_CHAT_ONLINE_LIST", true),
     enableChatDisconnectedList: bool("ENABLE_CHAT_DISCONNECTED_LIST", true),

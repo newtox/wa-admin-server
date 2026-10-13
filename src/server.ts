@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { handle } from "./api.js";
 import { handleUi } from "./ui.js";
 import { HttpError, sendJson } from "./http.js";
+import { startMatrixActivity } from "./matrixActivity.js";
 
 function serve(handler: typeof handle) {
   return http.createServer((req, res) => {
@@ -29,6 +30,8 @@ server.listen(config.port, () => {
     console.info(`workadventure-admin-server listening on :${config.port}`);
     if (!config.oidcIssuer) console.warn("OIDC_ISSUER is not set: roles are only taken from the database.");
 });
+
+startMatrixActivity();
 
 let ui: http.Server | undefined;
 if (config.publicUrl && config.oidcClientId && config.oidcClientSecret && config.oidcIssuer) {

@@ -25,6 +25,7 @@ import {
     unlockHint, unlockShort, visitorsOn, type Cosmetic, type Unlock,
 } from "./cosmetics.js";
 import { cosmeticIconPng } from "./cosmeticIcon.js";
+import { isOnline } from "./matrixActivity.js";
 
 const OG_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "og-image.png");
 
@@ -217,6 +218,7 @@ h2{font-size:16px;margin:0 0 12px}
 /* surfaces */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:18px}
 .card.danger{border-color:rgba(229,72,77,.35)}
+.online{display:inline-flex;align-items:center;gap:6px;color:var(--text)}.online::before{content:"";width:8px;height:8px;border-radius:50%;background:#3fb950;box-shadow:0 0 0 3px rgba(63,185,80,.2)}
 .split{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:18px;align-items:start}
 .split>.sticky{position:sticky;top:24px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
@@ -558,7 +560,7 @@ function membersPage(c: Ctx, message?: string): string {
                 ban ? `<span class="chip warn" style="margin-top:4px">${a.banned}${ban.reason ? `: ${esc(ban.reason)}` : ""}</span>` : ""
             }</div></div>
 <div><span class="cell-label">${a.roles}</span><div class="chips">${roles || `<span class="muted small">–</span>`}</div>${own ? `<span class="tagline" title="${a.personalTagTitle}">${esc(own)}</span>` : ""}</div>
-<div class="small muted"><span class="cell-label">${a.lastSeen}</span>${esc(fmtDate(u.lastSeen, a))}</div>
+<div class="small muted"><span class="cell-label">${a.lastSeen}</span>${isOnline(u.identifier) ? `<span class="online">${a.onlineNow}</span>` : esc(fmtDate(u.lastSeen, a))}</div>
 <div class="actions">${banForm}${removeForm}</div></div>`;
         })
         .join("");
